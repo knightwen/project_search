@@ -56,14 +56,7 @@ DISPLAY_COLUMNS = [
 
 def check_password():
     """Stop the app unless the user enters the configured app password."""
-    expected_password = st.secrets.get(
-        "apppassword",
-        st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", "20260526")),
-    )
-    expected_password = str(expected_password)
-    if not expected_password:
-        st.error("App password is not configured.")
-        st.stop()
+    expected_password = "20260526"
 
     if st.session_state.get("authenticated"):
         return
