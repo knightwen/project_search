@@ -69,7 +69,8 @@ def check_password():
         return
 
     password = st.text_input("Password", type="password")
-    if not password:
+    login_clicked = st.button("Log in")
+    if not login_clicked:
         st.stop()
 
     if hmac.compare_digest(password, expected_password):
