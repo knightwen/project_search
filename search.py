@@ -58,7 +58,7 @@ def check_password():
     """Stop the app unless the user enters the configured app password."""
     expected_password = st.secrets.get(
         "APP_PASSWORD",
-        st.secrets.get("apppassword", os.environ.get("APP_PASSWORD", "")),
+        st.secrets.get("apppassword", os.environ.get("APP_PASSWORD", "20260526")),
     )
     expected_password = str(expected_password)
     if not expected_password:
