@@ -8,6 +8,7 @@ available project fields. Run it with bash:
 python -m streamlit run search.py
 """
 
+import hmac
 import os
 import pandas as pd
 import streamlit as st
@@ -51,6 +52,28 @@ DISPLAY_COLUMNS = [
     "Key Words",
     "Description",
 ]
+
+
+def check_password():
+    """Stop the app unless the user enters the configured app password."""
+    expected_password = st.secrets.get("APP_PASSWORD", os.environ.get("APP_PASSWORD", ""))
+    if not expected_password:
+        st.error("App password is not configured.")
+        st.stop()
+
+    if st.session_state.get("authenticated"):
+        return
+
+    password = st.text_input("Password", type="password")
+    if not password:
+        st.stop()
+
+    if hmac.compare_digest(password, expected_password):
+        st.session_state["authenticated"] = True
+        st.rerun()
+
+    st.error("Incorrect password.")
+    st.stop()
 
 
 # ==========================================
@@ -97,6 +120,8 @@ def load_and_combine_data(folder):
 # ==========================================
 # 3. User interaction and search logic
 # ==========================================
+check_password()
+
 # Load data.
 combined_data, message = load_and_combine_data(FOLDER_PATH)
 
