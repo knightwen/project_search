@@ -6,8 +6,9 @@ A lightweight Streamlit web app for searching project records from Excel/CSV fil
 
 - Loads all `.xlsx`, `.xls`, and `.csv` files from `data_folder`
 - Combines project records into one searchable table
-- Searches across all available project fields
+- Searches by keyword, `Project ID`, client name, and manager
 - Shows selected result columns
+- Keeps Google Maps links and one-project KML downloads for records with coordinates
 - Exports search results as CSV
 
 ## Local Run
@@ -35,7 +36,9 @@ search.py
 
 To update the website data, replace or add Excel/CSV files in `data_folder`, commit the changes, and push to GitHub. Streamlit Community Cloud will redeploy the app from the updated repository.
 
+The consolidated file `data_folder/0_project_search_records.csv` is generated from the DataClean final project result workbooks and gives the site complete search coverage. The `6_project_locations_google_earth_*.xlsx` files preserve coordinate-rich map records. If the same `Project ID` appears in multiple files, the app keeps the row with valid coordinates.
+
 ## Notes
 
 - If the project data is confidential, use a private GitHub repository and restrict app sharing.
-- The `Manager` column is displayed only when it exists in the source files.
+- The `Manager` column is searchable and displayed when it exists in the source files.

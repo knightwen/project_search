@@ -27,8 +27,17 @@ st.markdown(
             max-width: 100%;
             padding-left: 1rem;
             padding-right: 1rem;
-            padding-top: 1rem;
+            padding-top: 2.75rem;
             padding-bottom: 1rem;
+        }
+        h1 {
+            line-height: 1.25;
+            padding-top: 0.2rem;
+            padding-bottom: 0.25rem;
+            margin-top: 0;
+        }
+        h2, h3 {
+            line-height: 1.25;
         }
         div[data-testid="stHorizontalBlock"] {
             gap: 0.35rem;
@@ -45,15 +54,40 @@ st.markdown(
         div[data-testid="stButton"] button,
         div[data-testid="stDownloadButton"] button,
         div[data-testid="stLinkButton"] a {
-            min-height: 1.75rem;
-            padding: 0.15rem 0.45rem;
+            min-height: 2rem;
+            padding: 0.25rem 0.55rem;
             font-size: 0.82rem;
-            line-height: 1.1;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .map-action-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 2rem;
+            width: 100%;
+            padding: 0.25rem 0.55rem;
+            border-radius: 0.35rem;
+            border: 1px solid #2563eb;
+            background: #2563eb;
+            color: #ffffff !important;
+            font-size: 0.82rem;
+            font-weight: 600;
+            line-height: 1.2;
+            text-decoration: none !important;
+            white-space: nowrap;
+            box-sizing: border-box;
+        }
+        .map-action-link:hover {
+            background: #1d4ed8;
+            border-color: #1d4ed8;
+            color: #ffffff !important;
+            text-decoration: none !important;
         }
         .project-divider {
             border: 0;
             border-top: 1px solid #e6e6e6;
-            margin: 0.25rem 0 0.35rem 0;
+            margin: 0.08rem 0 0.22rem 0;
         }
     </style>
     """,
@@ -61,7 +95,7 @@ st.markdown(
 )
 st.title("Project Full-Text Multi-File Search System")
 st.markdown(
-    "This system can batch-load Excel/CSV files from the target folder and search across all project fields."
+    "Search legacy project records by keyword, project ID, client, or manager. Map links and KML downloads are available for records with coordinates."
 )
 
 # Local folder path for project data files
@@ -85,6 +119,26 @@ DISPLAY_COLUMNS = [
     "Key Words",
     "Description",
 ]
+PROJECT_ID_COLUMNS = ("Project ID",)
+CLIENT_COLUMNS = ("Client", "Client Name", "Original Client")
+MANAGER_COLUMNS = ("Manager",)
+KEYWORD_COLUMNS = (
+    "Project ID",
+    "Project Name",
+    "Generated Project Name",
+    "Original Project Display Name",
+    "Client",
+    "Client Name",
+    "Original Client",
+    "Manager",
+    "Industry/Sector",
+    "Key Words",
+    "Project Profile",
+    "Description",
+    "City",
+    "Project Address",
+    "Final Project Address",
+)
 
 
 def get_file_signature(folder):
@@ -146,6 +200,46 @@ def safe_kml_name(row):
 def has_coordinates(df):
     """Return whether a dataframe contains latitude and longitude columns."""
     return LATITUDE_COLUMN in df.columns and LONGITUDE_COLUMN in df.columns
+
+
+def coalesce_columns(df, target_column, source_columns):
+    """Fill a normalized target column from the first non-empty source value."""
+    if target_column not in df.columns:
+        df[target_column] = ""
+    else:
+        df[target_column] = df[target_column].fillna("").astype(str)
+
+    for source_column in source_columns:
+        if source_column not in df.columns or source_column == target_column:
+            continue
+
+        target_values = df[target_column].fillna("").astype(str).str.strip()
+        source_values = df[source_column].fillna("").astype(str).str.strip()
+        df.loc[target_values == "", target_column] = source_values[target_values == ""]
+
+
+def normalize_project_columns(df):
+    """Normalize DataClean and map-export column names into the website display schema."""
+    coalesce_columns(
+        df,
+        "Project Name",
+        ("Project Name", "Generated Project Name", "Original Project Display Name"),
+    )
+    coalesce_columns(df, "Client", ("Client", "Client Name", "Original Client"))
+    coalesce_columns(df, LATITUDE_COLUMN, (LATITUDE_COLUMN, "Google Latitude"))
+    coalesce_columns(df, LONGITUDE_COLUMN, (LONGITUDE_COLUMN, "Google Longitude"))
+    coalesce_columns(df, "Project Profile", ("Project Profile", "Job Type"))
+    return df
+
+
+def coordinate_score(df):
+    """Return a score that helps keep coordinate-rich duplicate project rows."""
+    if not has_coordinates(df):
+        return pd.Series(0, index=df.index)
+
+    latitude = pd.to_numeric(df[LATITUDE_COLUMN], errors="coerce")
+    longitude = pd.to_numeric(df[LONGITUDE_COLUMN], errors="coerce")
+    return (latitude.notna() & longitude.notna()).astype(int)
 
 
 def get_project_coordinates(row):
@@ -218,28 +312,33 @@ def render_divider():
 
 
 def render_map_button(container, label, url):
-    """Render a map link with compatibility for older Streamlit versions."""
-    if hasattr(container, "link_button"):
-        try:
-            container.link_button(label, url)
-        except TypeError:
-            container.link_button(label, url)
-    else:
-        container.markdown(f"[{label}]({url})")
+    """Render a reliable Google Maps link button."""
+    if not url:
+        container.caption("Map unavailable")
+        return
+
+    container.markdown(
+        f"<a class='map-action-link' href='{escape(url)}' target='_blank' rel='noopener noreferrer'>{escape(label)}</a>",
+        unsafe_allow_html=True,
+    )
 
 
 def render_kml_download(container, row, key):
     """Render a KML download button with compatibility for older Streamlit versions."""
     kml_text = project_kml(row)
+    if not kml_text:
+        container.caption("KML unavailable")
+        return
+
     kwargs = {
-        "label": "KML",
+        "label": "Download KML",
         "data": kml_text.encode("utf-8"),
         "file_name": safe_kml_name(row),
         "mime": "application/vnd.google-earth.kml+xml",
         "key": key,
     }
     try:
-        container.download_button(**kwargs)
+        container.download_button(**kwargs, type="primary")
     except TypeError:
         container.download_button(**kwargs)
 
@@ -250,6 +349,54 @@ def row_text(row, column):
     if pd.isna(value):
         return ""
     return str(value).strip()
+
+
+def existing_columns(df, candidates):
+    """Return candidate columns that exist in the loaded dataframe."""
+    return [column for column in candidates if column in df.columns]
+
+
+def text_for_columns(df, columns):
+    """Build searchable lowercase text from selected columns."""
+    usable_columns = existing_columns(df, columns)
+    if not usable_columns:
+        return pd.Series("", index=df.index)
+
+    return df[usable_columns].fillna("").astype(str).agg(" ".join, axis=1).str.lower()
+
+
+def contains_terms(series, text):
+    """Return rows where all whitespace-separated terms exist in a text series."""
+    mask = pd.Series(True, index=series.index)
+    terms = [term.strip().lower() for term in text.split() if term.strip()]
+    for term in terms:
+        mask &= series.str.contains(term, na=False, regex=False)
+
+    return mask
+
+
+def filter_projects(df, keyword_text, project_id_text, client_text, manager_text):
+    """Filter project rows using dedicated project ID, client, manager, and keyword inputs."""
+    mask = pd.Series(True, index=df.index)
+
+    if keyword_text.strip():
+        mask &= contains_terms(text_for_columns(df, KEYWORD_COLUMNS), keyword_text)
+
+    if project_id_text.strip():
+        mask &= contains_terms(text_for_columns(df, PROJECT_ID_COLUMNS), project_id_text)
+
+    if client_text.strip():
+        mask &= contains_terms(text_for_columns(df, CLIENT_COLUMNS), client_text)
+
+    if manager_text.strip():
+        mask &= contains_terms(text_for_columns(df, MANAGER_COLUMNS), manager_text)
+
+    return df[mask]
+
+
+def has_any_search(*values):
+    """Return whether the user entered at least one search value."""
+    return any(value.strip() for value in values)
 
 
 def render_body_text(*texts):
@@ -264,7 +411,7 @@ def render_body_text(*texts):
 
     content = "<br>".join(lines)
     st.markdown(
-        f"<div style='margin:0 0 0.15rem 0; line-height:1.28;'>{content}</div>",
+        f"<div style='margin:0 0 0.04rem 0; line-height:1.28;'>{content}</div>",
         unsafe_allow_html=True,
     )
 
@@ -306,25 +453,10 @@ def render_project_action_list(projects_df):
         profile = row_text(row, "Project Profile")
         description = row_text(row, "Description")
 
-        title_col, map_col, earth_col = st.columns([7, 1, 1])
-        metadata = []
-        if client:
-            metadata.append(f"Client: {client}")
-        if manager:
-            metadata.append(f"Manager: {manager}")
-        if sector:
-            metadata.append(f"Sector: {sector}")
-
-        metadata_html = ""
-        if metadata:
-            metadata_html = (
-                "<div style='font-size:0.82rem; color:#666; margin-top:0.05rem; "
-                f"line-height:1.15;'>{escape(' | '.join(metadata))}</div>"
-            )
+        title_col, map_col, earth_col = st.columns([6, 1.35, 1.45])
         title_col.markdown(
             "<div style='margin:0 0 0.1rem 0;'>"
             f"<div style='font-weight:600; margin:0; line-height:1.2;'>{escape(title)}</div>"
-            f"{metadata_html}"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -337,7 +469,13 @@ def render_project_action_list(projects_df):
             map_col.caption("Map unavailable")
             earth_col.caption("KML unavailable")
 
-        render_body_text(("Profile", profile), ("Description", description))
+        render_body_text(
+            ("Client", client),
+            ("Manager", manager),
+            ("Sector", sector),
+            ("Profile", profile),
+            ("Description", description),
+        )
 
         render_divider()
 
@@ -399,6 +537,16 @@ def load_and_combine_data(folder, file_signature):
     combined_df = pd.concat(all_dfs, ignore_index=True)
     # Clean column names by removing possible leading/trailing spaces.
     combined_df.columns = combined_df.columns.str.strip()
+    combined_df = normalize_project_columns(combined_df)
+
+    if "Project ID" in combined_df.columns:
+        combined_df["Project ID"] = combined_df["Project ID"].fillna("").astype(str).str.strip()
+        combined_df["_coordinate_score"] = coordinate_score(combined_df)
+        combined_df = (
+            combined_df.sort_values("_coordinate_score", kind="stable")
+            .drop_duplicates(subset=["Project ID"], keep="last")
+            .drop(columns=["_coordinate_score"])
+        )
 
     return combined_df, f"Loaded and combined {len(all_files)} files with {len(combined_df)} project records."
 
@@ -420,25 +568,30 @@ else:
     # Show data loading status in the sidebar.
     st.sidebar.success(message)
 
-    # Search input.
-    search_text = st.text_input(
-        "Enter search text, such as project name, client, location, keyword, or description:",
-        "",
-    )
+    # Search inputs.
+    keyword_col, id_col, client_col, manager_col = st.columns([2, 1, 1, 1])
+    with keyword_col:
+        keyword_text = st.text_input(
+            "Keyword",
+            "",
+            placeholder="retaining wall certification treendale",
+        )
+    with id_col:
+        project_id_text = st.text_input("Project ID", "", placeholder="8443")
+    with client_col:
+        client_text = st.text_input("Client name", "", placeholder="Calibre")
+    with manager_col:
+        manager_text = st.text_input("Manager", "", placeholder="MichaelKelly")
 
     # Search only after the user enters text.
-    if search_text.strip():
-        query_lower = search_text.strip().lower()
-
-        # Full-text search across all columns in each row.
-        searchable_text = (
-            combined_data.fillna("")
-            .astype(str)
-            .agg(" ".join, axis=1)
-            .str.lower()
+    if has_any_search(keyword_text, project_id_text, client_text, manager_text):
+        filtered_df = filter_projects(
+            combined_data,
+            keyword_text=keyword_text,
+            project_id_text=project_id_text,
+            client_text=client_text,
+            manager_text=manager_text,
         )
-        search_mask = searchable_text.str.contains(query_lower, na=False, regex=False)
-        filtered_df = combined_data[search_mask]
 
         # Keep only columns that exist in the loaded data.
         existing_display_cols = [
@@ -460,15 +613,21 @@ else:
                 st.download_button(
                     label="Download Current Search Results (CSV)",
                     data=csv_buffer,
-                    file_name=safe_download_name(search_text),
+                    file_name=safe_download_name(
+                        " ".join(
+                            value
+                            for value in (keyword_text, project_id_text, client_text, manager_text)
+                            if value.strip()
+                        )
+                    ),
                     mime="text/csv",
                 )
 
                 render_project_action_list(filtered_df.reset_index(drop=True))
             else:
-                st.warning(f"No projects were found containing the search text '{search_text}'.")
+                st.warning("No projects were found for the current search.")
     else:
-        st.info("Enter text in the search box above to start searching.")
+        st.info("Enter a keyword, project ID, client name, or manager to start searching.")
 
         # By default, preview the first 20 rows.
         st.subheader("Project Data Preview (First 20 Rows)")
