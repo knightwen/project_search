@@ -5,5 +5,11 @@ venv/
 env/
 .env
 .streamlit/secrets.toml
+node_modules/
+dist/
+.vercel/
+vite.out.log
+vite.err.log
+vite.pid
 .DS_Store
 Thumbs.db
