@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Download,
   ExternalLink,
@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import {
   DISPLAY_COLUMNS,
-  filterProjects,
   hasAnySearch,
   safeDownloadName,
   visibleColumns,
@@ -17,8 +16,7 @@ import {
 import { downloadText, rowsToCsv } from "./lib/export.js";
 import { googleMapsUrl, projectKml, projectLabel, safeKmlName } from "./lib/kml.js";
 
-const PASSWORD = "20260526";
-const AUTH_KEY = "project-search-authenticated";
+const PASSWORD_KEY = "project-search-password";
 const PAGE_SIZE = 20;
 const PREVIEW_COLUMNS = [
   "Project ID",
@@ -36,19 +34,42 @@ function textValue(value) {
   return String(value).trim();
 }
 
+async function searchApi({ password, filters = {}, page = 1, includeAll = false }) {
+  const response = await fetch("/api/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      password,
+      filters,
+      page,
+      pageSize: PAGE_SIZE,
+      includeAll,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || `Search request failed with ${response.status}`);
+  }
+  return body;
+}
+
 function LoginView({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [logoFailed, setLogoFailed] = useState(false);
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault();
-    if (password === PASSWORD) {
-      localStorage.setItem(AUTH_KEY, "true");
-      onLogin();
-      return;
+    setError("");
+    try {
+      const initialPayload = await searchApi({ password, filters: {}, page: 1 });
+      sessionStorage.setItem(PASSWORD_KEY, password);
+      onLogin(password, initialPayload);
+    } catch (apiError) {
+      setError(apiError.message);
     }
-    setError("Incorrect password.");
   }
 
   return (
@@ -184,9 +205,8 @@ function PreviewTable({ rows }) {
 }
 
 export default function App() {
-  const [authenticated, setAuthenticated] = useState(
-    () => localStorage.getItem(AUTH_KEY) === "true",
-  );
+  const [password, setPassword] = useState(() => sessionStorage.getItem(PASSWORD_KEY) || "");
+  const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(PASSWORD_KEY)));
   const [logoFailed, setLogoFailed] = useState(false);
   const [payload, setPayload] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -196,40 +216,52 @@ export default function App() {
   const [managerText, setManagerText] = useState("");
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    fetch("/project-data.json")
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Data request failed with ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(setPayload)
-      .catch((error) => setLoadError(error.message));
-  }, []);
-
-  const rows = payload?.records || [];
+  const filters = { keywordText, projectIdText, clientText, managerText };
   const searching = hasAnySearch(keywordText, projectIdText, clientText, managerText);
-  const filteredRows = useMemo(
-    () =>
-      searching
-        ? filterProjects(rows, { keywordText, projectIdText, clientText, managerText })
-        : rows,
-    [rows, searching, keywordText, projectIdText, clientText, managerText],
-  );
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pagedRows = searching
-    ? filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-    : [];
+  const rows = payload?.results || [];
+  const total = payload?.total || 0;
+  const totalPages = payload?.totalPages || 1;
+  const currentPage = payload?.page || page;
+
+  useEffect(() => {
+    if (!authenticated || !password) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoadError("");
+    searchApi({ password, filters, page })
+      .then((nextPayload) => {
+        if (!cancelled) {
+          setPayload(nextPayload);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+        setLoadError(error.message);
+        if (/password/i.test(error.message)) {
+          sessionStorage.removeItem(PASSWORD_KEY);
+          setAuthenticated(false);
+          setPassword("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, password, keywordText, projectIdText, clientText, managerText, page]);
 
   useEffect(() => {
     setPage(1);
   }, [keywordText, projectIdText, clientText, managerText]);
 
   function logout() {
-    localStorage.removeItem(AUTH_KEY);
+    sessionStorage.removeItem(PASSWORD_KEY);
+    setPassword("");
     setAuthenticated(false);
+    setPayload(null);
   }
 
   function clearSearch() {
@@ -239,17 +271,30 @@ export default function App() {
     setManagerText("");
   }
 
-  function downloadCsv() {
-    const columns = visibleColumns(filteredRows, DISPLAY_COLUMNS);
-    const csv = rowsToCsv(filteredRows, columns);
-    const fileName = safeDownloadName(
-      [keywordText, projectIdText, clientText, managerText].filter((value) => value.trim()).join(" "),
-    );
-    downloadText(fileName, csv, "text/csv;charset=utf-8");
+  async function downloadCsv() {
+    try {
+      const exportPayload = await searchApi({ password, filters, page: 1, includeAll: true });
+      const columns = visibleColumns(exportPayload.results, DISPLAY_COLUMNS);
+      const csv = rowsToCsv(exportPayload.results, columns);
+      const fileName = safeDownloadName(
+        [keywordText, projectIdText, clientText, managerText].filter((value) => value.trim()).join(" "),
+      );
+      downloadText(fileName, csv, "text/csv;charset=utf-8");
+    } catch (error) {
+      setLoadError(error.message);
+    }
   }
 
   if (!authenticated) {
-    return <LoginView onLogin={() => setAuthenticated(true)} />;
+    return (
+      <LoginView
+        onLogin={(nextPassword, initialPayload) => {
+          setPassword(nextPassword);
+          setPayload(initialPayload);
+          setAuthenticated(true);
+        }}
+      />
+    );
   }
 
   return (
@@ -267,7 +312,7 @@ export default function App() {
             <h1>WML Structural Group Projects Management System</h1>
             <p>
               {payload
-                ? `${payload.recordCount.toLocaleString()} project records from ${payload.sourceFiles.length} files`
+                ? `${payload.recordCount.toLocaleString()} project records from ${payload.sourceFileCount} files`
                 : "Loading project records"}
             </p>
           </div>
@@ -316,7 +361,7 @@ export default function App() {
           <ActionButton icon={RefreshCw} onClick={clearSearch}>
             Clear
           </ActionButton>
-          {searching && filteredRows.length > 0 ? (
+          {searching && total > 0 ? (
             <ActionButton icon={Download} onClick={downloadCsv}>
               CSV
             </ActionButton>
@@ -329,25 +374,25 @@ export default function App() {
       {searching ? (
         <section className="results-section">
           <div className="section-heading">
-            <h2>{filteredRows.length.toLocaleString()} matching projects</h2>
-            {filteredRows.length > 0 ? (
+            <h2>{total.toLocaleString()} matching projects</h2>
+            {total > 0 ? (
               <p>
                 Showing {(currentPage - 1) * PAGE_SIZE + 1}-
-                {Math.min(currentPage * PAGE_SIZE, filteredRows.length)} of{" "}
-                {filteredRows.length.toLocaleString()}
+                {Math.min(currentPage * PAGE_SIZE, total)} of{" "}
+                {total.toLocaleString()}
               </p>
             ) : null}
           </div>
-          {pagedRows.length ? (
+          {rows.length ? (
             <div className="result-list">
-              {pagedRows.map((row, index) => (
+              {rows.map((row, index) => (
                 <ProjectResult key={`${row["Project ID"] || "project"}-${index}`} row={row} />
               ))}
             </div>
           ) : (
             <p className="empty-state">No projects were found for the current search.</p>
           )}
-          {filteredRows.length > PAGE_SIZE ? (
+          {total > PAGE_SIZE ? (
             <div className="pagination">
               <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))}>
                 Previous

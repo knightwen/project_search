@@ -4,13 +4,13 @@ A Vite React web app for searching legacy project records generated from Excel/C
 
 ## What It Does
 
-- Builds a static `public/project-data.json` file from `data_folder`
-- Searches project records by keyword, `Project ID`, client name, and manager
+- Builds a private `data_private/project-data.json` file from `data_folder`
+- Searches project records through a protected Vercel API route
 - Shows project details in a responsive browser interface
 - Opens Google Maps links for records with coordinates
 - Downloads one-project KML files for Google Earth
 - Exports the current search results as CSV
-- Uses a lightweight browser password gate
+- Uses a server-side password check before any data is returned
 
 ## Local Setup
 
@@ -22,6 +22,14 @@ npm run dev
 ```
 
 The local Vite server prints the browser URL after it starts.
+
+Local password configuration lives in `.env.local`:
+
+```text
+SEARCH_PASSWORD=20260526
+```
+
+This file is ignored by Git.
 
 ## Company Logo
 
@@ -37,7 +45,13 @@ The login page and main header load that file as `/wml-logo.png`. If the file is
 
 1. Push this repository to GitHub.
 2. Import the repository in Vercel.
-3. Use these settings:
+3. Add this Vercel environment variable:
+
+```text
+SEARCH_PASSWORD=20260526
+```
+
+4. Use these settings:
 
 ```text
 Framework Preset: Vite
@@ -53,7 +67,7 @@ To update the website data:
 
 ```powershell
 python scripts/build-data.py
-git add data_folder public/project-data.json
+git add data_folder data_private/project-data.json
 git commit -m "data: update project search records"
 git push
 ```
@@ -62,4 +76,4 @@ Vercel redeploys from the updated repository.
 
 ## Security Note
 
-The React app is deployed as static frontend assets. The generated project data is included in `public/project-data.json`, so the password gate is not strong server-side access control. For confidential data, use private repository controls, Vercel access controls, or a backend API with real authentication.
+The generated data is no longer served from `public/`. It is read by `api/search.js` after the server-side password check. Keep the GitHub repository private if the source data itself is confidential, because Vercel deploys from the repository contents.

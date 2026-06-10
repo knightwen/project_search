@@ -4,6 +4,7 @@ __pycache__/
 venv/
 env/
 .env
+.env*
 .streamlit/secrets.toml
 node_modules/
 dist/
@@ -13,3 +14,5 @@ vite.err.log
 vite.pid
 .DS_Store
 Thumbs.db
+
+.vercel

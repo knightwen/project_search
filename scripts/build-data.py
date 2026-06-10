@@ -6,7 +6,7 @@ import pandas as pd
 
 
 FOLDER_PATH = "data_folder"
-OUTPUT_PATH = os.path.join("public", "project-data.json")
+OUTPUT_PATH = os.path.join("data_private", "project-data.json")
 SUPPORTED_EXTENSIONS = (".xlsx", ".xls", ".csv")
 LATITUDE_COLUMN = "Latitude"
 LONGITUDE_COLUMN = "Longitude"
