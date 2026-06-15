@@ -101,3 +101,53 @@ export function projectKml(row) {
 </kml>
 `;
 }
+
+export function projectsKml(rows, documentName = "Search Results") {
+  const placemarks = rows
+    .map((row) => {
+      const coordinates = getProjectCoordinates(row);
+      if (!coordinates) {
+        return "";
+      }
+
+      const name = projectLabel(row);
+      const descriptionColumns = [
+        "Project ID",
+        "Client",
+        "Manager",
+        "Industry/Sector",
+        "Key Words",
+        "Description",
+      ];
+      const description = descriptionColumns
+        .map((column) => {
+          const value = cleanValue(row[column]);
+          if (!value) {
+            return "";
+          }
+          return `<b>${escapeXml(column)}</b>: ${escapeXml(value)}`;
+        })
+        .filter(Boolean)
+        .join("<br/>")
+        .replaceAll("]]>", "]]&gt;");
+
+      return `    <Placemark>
+      <name>${escapeXml(name)}</name>
+      <description><![CDATA[${description}]]></description>
+      <Point>
+        <coordinates>${coordinates.longitude},${coordinates.latitude},0</coordinates>
+      </Point>
+    </Placemark>`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${escapeXml(documentName)}</name>
+${placemarks}
+  </Document>
+</kml>
+`;
+}

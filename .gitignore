@@ -9,6 +9,7 @@ env/
 node_modules/
 dist/
 .vercel/
+.vite/
 vite.out.log
 vite.err.log
 vite.pid

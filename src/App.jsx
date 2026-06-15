@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import L from "leaflet";
 import {
   Download,
   ExternalLink,
@@ -14,7 +15,14 @@ import {
   visibleColumns,
 } from "./lib/search.js";
 import { downloadText, rowsToCsv } from "./lib/export.js";
-import { googleMapsUrl, projectKml, projectLabel, safeKmlName } from "./lib/kml.js";
+import {
+  getProjectCoordinates,
+  googleMapsUrl,
+  projectKml,
+  projectLabel,
+  projectsKml,
+  safeKmlName,
+} from "./lib/kml.js";
 
 const PASSWORD_KEY = "project-search-password";
 const PAGE_SIZE = 20;
@@ -32,6 +40,15 @@ function textValue(value) {
     return "";
   }
   return String(value).trim();
+}
+
+function escapeHtml(value) {
+  return textValue(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 async function searchApi({ password, filters = {}, page = 1, includeAll = false }) {
@@ -103,7 +120,7 @@ function LoginView({ onLogin }) {
   );
 }
 
-function SearchField({ id, label, value, placeholder, onChange }) {
+function SearchField({ id, label, value, placeholder, onChange, onEnter }) {
   return (
     <label className="field" htmlFor={id}>
       <span>{label}</span>
@@ -112,6 +129,12 @@ function SearchField({ id, label, value, placeholder, onChange }) {
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            onEnter?.();
+          }
+        }}
       />
     </label>
   );
@@ -175,6 +198,156 @@ function ProjectResult({ row }) {
         )}
       </div>
     </article>
+  );
+}
+
+function ResultsMap({ rows, total }) {
+  const mapElementRef = useRef(null);
+  const mapRef = useRef(null);
+  const layerRef = useRef(null);
+  const [mapSize, setMapSize] = useState("compact");
+  const [collapsed, setCollapsed] = useState(false);
+  const mappedRows = rows
+    .map((row) => ({ row, coordinates: getProjectCoordinates(row) }))
+    .filter((item) => item.coordinates);
+  const hasMappedRows = mappedRows.length > 0;
+
+  useEffect(() => {
+    if (!hasMappedRows || !mapElementRef.current || mapRef.current) {
+      return;
+    }
+
+    mapRef.current = L.map(mapElementRef.current, {
+      scrollWheelZoom: false,
+    }).setView([-31.95, 115.86], 6);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(mapRef.current);
+
+    layerRef.current = L.layerGroup().addTo(mapRef.current);
+    window.setTimeout(() => {
+      mapRef.current?.invalidateSize();
+    }, 0);
+
+    return () => {
+      mapRef.current?.remove();
+      mapRef.current = null;
+      layerRef.current = null;
+    };
+  }, [hasMappedRows]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = layerRef.current;
+    if (!map || !layer) {
+      return;
+    }
+
+    layer.clearLayers();
+    const bounds = [];
+    mappedRows.forEach(({ row, coordinates }) => {
+      const marker = L.marker([coordinates.latitude, coordinates.longitude], {
+        icon: L.divIcon({
+          className: "project-map-marker",
+          html: "",
+          iconSize: [14, 14],
+          iconAnchor: [7, 7],
+        }),
+      });
+      const mapUrl = googleMapsUrl(row);
+      marker.bindPopup(
+        `<strong>${escapeHtml(projectLabel(row))}</strong><br>` +
+          `${escapeHtml(row.Client || "")}<br>` +
+          `${escapeHtml(row.Manager || "")}<br>` +
+          `<a href="${escapeHtml(mapUrl)}" target="_blank" rel="noreferrer">Open Google Maps</a>`,
+      );
+      marker.addTo(layer);
+      bounds.push([coordinates.latitude, coordinates.longitude]);
+    });
+
+    if (bounds.length === 1) {
+      map.setView(bounds[0], 13);
+    } else if (bounds.length > 1) {
+      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
+    }
+    window.setTimeout(() => {
+      map.invalidateSize();
+    }, 0);
+  }, [rows, mappedRows]);
+
+  useEffect(() => {
+    window.setTimeout(() => {
+      mapRef.current?.invalidateSize();
+    }, 0);
+  }, [mapSize, collapsed]);
+
+  function enableScrollZoom() {
+    mapRef.current?.scrollWheelZoom.enable();
+  }
+
+  function disableScrollZoom() {
+    mapRef.current?.scrollWheelZoom.disable();
+  }
+
+  if (!hasMappedRows) {
+    return (
+      <section className="results-map-panel">
+        <div className="map-summary">
+          <h3>Map</h3>
+          <p>No matching projects with coordinates.</p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="results-map-panel">
+        <div className="map-summary">
+          <div>
+            <h3>Map</h3>
+          </div>
+        <p>
+          Showing {mappedRows.length.toLocaleString()} mapped projects from{" "}
+          {total.toLocaleString()} matching results.
+        </p>
+        <div className="map-controls">
+          <div className="map-size-toggle" aria-label="Map size">
+            <button
+              type="button"
+              className={mapSize === "compact" ? "active" : ""}
+              onClick={() => setMapSize("compact")}
+              disabled={collapsed}
+            >
+              Compact
+            </button>
+            <button
+              type="button"
+              className={mapSize === "large" ? "active" : ""}
+              onClick={() => setMapSize("large")}
+              disabled={collapsed}
+            >
+              Large
+            </button>
+          </div>
+          <button
+            className="map-collapse-button"
+            type="button"
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? "Expand" : "Collapse"}
+          </button>
+        </div>
+      </div>
+      <div
+        className={`map-canvas ${mapSize === "large" ? "large" : ""} ${collapsed ? "collapsed" : ""}`}
+        ref={mapElementRef}
+        aria-label="Search results map"
+        onMouseEnter={enableScrollZoom}
+        onMouseLeave={disableScrollZoom}
+      />
+    </section>
   );
 }
 
@@ -267,10 +440,23 @@ export default function App() {
   const [projectIdText, setProjectIdText] = useState("");
   const [clientText, setClientText] = useState("");
   const [managerText, setManagerText] = useState("");
+  const [submittedFilters, setSubmittedFilters] = useState({
+    keywordText: "",
+    projectIdText: "",
+    clientText: "",
+    managerText: "",
+  });
   const [page, setPage] = useState(1);
+  const [mapRows, setMapRows] = useState([]);
 
-  const filters = { keywordText, projectIdText, clientText, managerText };
-  const searching = hasAnySearch(keywordText, projectIdText, clientText, managerText);
+  const draftFilters = { keywordText, projectIdText, clientText, managerText };
+  const filters = submittedFilters;
+  const searching = hasAnySearch(
+    filters.keywordText,
+    filters.projectIdText,
+    filters.clientText,
+    filters.managerText,
+  );
   const rows = payload?.results || [];
   const total = payload?.total || 0;
   const totalPages = payload?.totalPages || 1;
@@ -288,6 +474,18 @@ export default function App() {
         if (!cancelled) {
           setPayload(nextPayload);
         }
+        if (!cancelled && searching) {
+          return searchApi({ password, filters, page: 1, includeAll: true });
+        }
+        if (!cancelled) {
+          setMapRows([]);
+        }
+        return null;
+      })
+      .then((mapPayload) => {
+        if (!cancelled && mapPayload) {
+          setMapRows(mapPayload.results || []);
+        }
       })
       .catch((error) => {
         if (cancelled) {
@@ -304,11 +502,16 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [authenticated, password, keywordText, projectIdText, clientText, managerText, page]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [keywordText, projectIdText, clientText, managerText]);
+  }, [
+    authenticated,
+    password,
+    filters.keywordText,
+    filters.projectIdText,
+    filters.clientText,
+    filters.managerText,
+    page,
+    searching,
+  ]);
 
   function logout() {
     sessionStorage.removeItem(PASSWORD_KEY);
@@ -322,6 +525,19 @@ export default function App() {
     setProjectIdText("");
     setClientText("");
     setManagerText("");
+    setSubmittedFilters({
+      keywordText: "",
+      projectIdText: "",
+      clientText: "",
+      managerText: "",
+    });
+    setPage(1);
+  }
+
+  function submitSearch(event) {
+    event?.preventDefault();
+    setSubmittedFilters(draftFilters);
+    setPage(1);
   }
 
   async function downloadCsv() {
@@ -333,6 +549,16 @@ export default function App() {
         [keywordText, projectIdText, clientText, managerText].filter((value) => value.trim()).join(" "),
       );
       downloadText(fileName, csv, "text/csv;charset=utf-8");
+    } catch (error) {
+      setLoadError(error.message);
+    }
+  }
+
+  async function downloadSearchKml() {
+    try {
+      const exportPayload = await searchApi({ password, filters, page: 1, includeAll: true });
+      const kml = projectsKml(exportPayload.results || [], "WML Search Results");
+      downloadText("wml_search_results.kml", kml, "application/vnd.google-earth.kml+xml;charset=utf-8");
     } catch (error) {
       setLoadError(error.message);
     }
@@ -377,13 +603,14 @@ export default function App() {
       </header>
 
       <section className="search-band" aria-label="Project search filters">
-        <div className="search-grid">
+        <form className="search-grid" onSubmit={submitSearch}>
           <SearchField
             id="keyword"
             label="Keyword"
             value={keywordText}
             placeholder="retaining wall"
             onChange={setKeywordText}
+            onEnter={submitSearch}
           />
           <SearchField
             id="project-id"
@@ -391,6 +618,7 @@ export default function App() {
             value={projectIdText}
             placeholder="8443"
             onChange={setProjectIdText}
+            onEnter={submitSearch}
           />
           <SearchField
             id="client"
@@ -398,6 +626,7 @@ export default function App() {
             value={clientText}
             placeholder="Calibre"
             onChange={setClientText}
+            onEnter={submitSearch}
           />
           <SearchField
             id="manager"
@@ -405,10 +634,11 @@ export default function App() {
             value={managerText}
             placeholder="Michael Kelly"
             onChange={setManagerText}
+            onEnter={submitSearch}
           />
-        </div>
+        </form>
         <div className="toolbar">
-          <ActionButton icon={Search} onClick={() => setPage(1)}>
+          <ActionButton icon={Search} onClick={submitSearch}>
             Search
           </ActionButton>
           <ActionButton icon={RefreshCw} onClick={clearSearch}>
@@ -417,6 +647,11 @@ export default function App() {
           {searching && total > 0 ? (
             <ActionButton icon={Download} onClick={downloadCsv}>
               CSV
+            </ActionButton>
+          ) : null}
+          {searching && total > 0 ? (
+            <ActionButton icon={FileDown} onClick={downloadSearchKml}>
+              KML
             </ActionButton>
           ) : null}
         </div>
@@ -436,6 +671,7 @@ export default function App() {
               </p>
             ) : null}
           </div>
+          <ResultsMap rows={mapRows} total={total} />
           {rows.length ? (
             <div className="result-list">
               {rows.map((row, index) => (

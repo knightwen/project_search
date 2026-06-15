@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   getProjectCoordinates,
   googleMapsUrl,
+  projectsKml,
   projectKml,
   projectLabel,
   safeKmlName,
@@ -46,5 +47,39 @@ describe("KML and map helpers", () => {
       safeKmlName({ "Project ID": "8443", "Project Name": "Wall: Test/Area" }),
       "8443 Wall_ Test_Area.kml",
     );
+  });
+
+  it("builds one KML document for all rows with valid coordinates", () => {
+    const kml = projectsKml(
+      [
+        {
+          "Project ID": "8443",
+          "Project Name": "Treendale Wall",
+          Client: "Calibre",
+          Latitude: -31.95,
+          Longitude: 115.86,
+        },
+        {
+          "Project ID": "1200",
+          "Project Name": "No coordinates",
+          Latitude: "",
+          Longitude: "",
+        },
+        {
+          "Project ID": "1300",
+          "Project Name": "Bridge & Survey",
+          Latitude: -32.1,
+          Longitude: 116.2,
+        },
+      ],
+      "Search Results",
+    );
+
+    assert.match(kml, /<name>Search Results<\/name>/);
+    assert.equal((kml.match(/<Placemark>/g) || []).length, 2);
+    assert.match(kml, /<name>8443 - Treendale Wall<\/name>/);
+    assert.match(kml, /<coordinates>115.86,-31.95,0<\/coordinates>/);
+    assert.match(kml, /<name>1300 - Bridge &amp; Survey<\/name>/);
+    assert.doesNotMatch(kml, /No coordinates/);
   });
 });
