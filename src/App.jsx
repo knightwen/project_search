@@ -220,10 +220,12 @@ function ResultsMap({ rows, total }) {
     mapRef.current = L.map(mapElementRef.current, {
       scrollWheelZoom: false,
     }).setView([-31.95, 115.86], 6);
+    mapRef.current.attributionControl.setPrefix(false);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors",
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>',
     }).addTo(mapRef.current);
 
     layerRef.current = L.layerGroup().addTo(mapRef.current);
