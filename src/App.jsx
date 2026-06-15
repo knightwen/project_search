@@ -55,6 +55,13 @@ function projectKey(row) {
   return textValue(row?.["Project ID"]) || projectLabel(row);
 }
 
+function projectPopupHtml(row) {
+  return (
+    `<strong>${escapeHtml(textValue(row["Project ID"]) || "No Project ID")}</strong><br>` +
+    `${escapeHtml(textValue(row["Project Name"]) || projectLabel(row))}`
+  );
+}
+
 async function searchApi({ password, filters = {}, page = 1, includeAll = false }) {
   const response = await fetch("/api/search", {
     method: "POST",
@@ -275,16 +282,17 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
           iconAnchor: isSelected ? [9, 9] : [7, 7],
         }),
       });
-      const mapUrl = googleMapsUrl(row);
-      marker.bindPopup(
-        `<strong>${escapeHtml(projectLabel(row))}</strong><br>` +
-          `Project details moved to the first result below.<br>` +
-          `<a href="${escapeHtml(mapUrl)}" target="_blank" rel="noreferrer">Open Google Maps</a>`,
-      );
+      marker.bindPopup(projectPopupHtml(row));
       marker.on("click", () => {
         onProjectSelect?.(row);
+        marker.openPopup();
       });
       marker.addTo(layer);
+      if (isSelected) {
+        window.setTimeout(() => {
+          marker.openPopup();
+        }, 0);
+      }
       bounds.push([coordinates.latitude, coordinates.longitude]);
     });
 
