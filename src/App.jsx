@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import {
   Download,
@@ -49,6 +49,10 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function projectKey(row) {
+  return textValue(row?.["Project ID"]) || projectLabel(row);
 }
 
 async function searchApi({ password, filters = {}, page = 1, includeAll = false }) {
@@ -149,7 +153,7 @@ function ActionButton({ children, icon: Icon, ...props }) {
   );
 }
 
-function ProjectResult({ row }) {
+function ProjectResult({ row, selected = false }) {
   const label = projectLabel(row);
   const mapUrl = googleMapsUrl(row);
   const kml = projectKml(row);
@@ -162,7 +166,7 @@ function ProjectResult({ row }) {
   }
 
   return (
-    <article className="result-row">
+    <article className={`result-row ${selected ? "selected" : ""}`}>
       <div className="result-main">
         <h3>{label}</h3>
         <dl>
@@ -201,15 +205,19 @@ function ProjectResult({ row }) {
   );
 }
 
-function ResultsMap({ rows, total }) {
+function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
   const [mapSize, setMapSize] = useState("compact");
   const [collapsed, setCollapsed] = useState(false);
-  const mappedRows = rows
-    .map((row) => ({ row, coordinates: getProjectCoordinates(row) }))
-    .filter((item) => item.coordinates);
+  const mappedRows = useMemo(
+    () =>
+      rows
+        .map((row) => ({ row, coordinates: getProjectCoordinates(row) }))
+        .filter((item) => item.coordinates),
+    [rows],
+  );
   const hasMappedRows = mappedRows.length > 0;
 
   useEffect(() => {
@@ -250,21 +258,24 @@ function ResultsMap({ rows, total }) {
     layer.clearLayers();
     const bounds = [];
     mappedRows.forEach(({ row, coordinates }) => {
+      const isSelected = projectKey(row) === selectedProjectKey;
       const marker = L.marker([coordinates.latitude, coordinates.longitude], {
         icon: L.divIcon({
-          className: "project-map-marker",
+          className: `project-map-marker ${isSelected ? "selected" : ""}`,
           html: "",
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
+          iconSize: isSelected ? [18, 18] : [14, 14],
+          iconAnchor: isSelected ? [9, 9] : [7, 7],
         }),
       });
       const mapUrl = googleMapsUrl(row);
       marker.bindPopup(
         `<strong>${escapeHtml(projectLabel(row))}</strong><br>` +
-          `${escapeHtml(row.Client || "")}<br>` +
-          `${escapeHtml(row.Manager || "")}<br>` +
+          `Project details moved to the first result below.<br>` +
           `<a href="${escapeHtml(mapUrl)}" target="_blank" rel="noreferrer">Open Google Maps</a>`,
       );
+      marker.on("click", () => {
+        onProjectSelect?.(row);
+      });
       marker.addTo(layer);
       bounds.push([coordinates.latitude, coordinates.longitude]);
     });
@@ -277,7 +288,7 @@ function ResultsMap({ rows, total }) {
     window.setTimeout(() => {
       map.invalidateSize();
     }, 0);
-  }, [rows, mappedRows]);
+  }, [mappedRows, onProjectSelect, selectedProjectKey]);
 
   useEffect(() => {
     window.setTimeout(() => {
@@ -450,6 +461,7 @@ export default function App() {
   });
   const [page, setPage] = useState(1);
   const [mapRows, setMapRows] = useState([]);
+  const [selectedMapProject, setSelectedMapProject] = useState(null);
 
   const draftFilters = { keywordText, projectIdText, clientText, managerText };
   const filters = submittedFilters;
@@ -460,6 +472,13 @@ export default function App() {
     filters.managerText,
   );
   const rows = payload?.results || [];
+  const selectedMapProjectKey = selectedMapProject ? projectKey(selectedMapProject) : "";
+  const displayRows = selectedMapProject
+    ? [
+        selectedMapProject,
+        ...rows.filter((row) => projectKey(row) !== selectedMapProjectKey),
+      ]
+    : rows;
   const total = payload?.total || 0;
   const totalPages = payload?.totalPages || 1;
   const currentPage = payload?.page || page;
@@ -533,12 +552,14 @@ export default function App() {
       clientText: "",
       managerText: "",
     });
+    setSelectedMapProject(null);
     setPage(1);
   }
 
   function submitSearch(event) {
     event?.preventDefault();
     setSubmittedFilters(draftFilters);
+    setSelectedMapProject(null);
     setPage(1);
   }
 
@@ -673,11 +694,20 @@ export default function App() {
               </p>
             ) : null}
           </div>
-          <ResultsMap rows={mapRows} total={total} />
+          <ResultsMap
+            rows={mapRows}
+            total={total}
+            selectedProjectKey={selectedMapProjectKey}
+            onProjectSelect={setSelectedMapProject}
+          />
           {rows.length ? (
             <div className="result-list">
-              {rows.map((row, index) => (
-                <ProjectResult key={`${row["Project ID"] || "project"}-${index}`} row={row} />
+              {displayRows.map((row, index) => (
+                <ProjectResult
+                  key={`${projectKey(row) || "project"}-${index}`}
+                  row={row}
+                  selected={Boolean(selectedMapProjectKey) && projectKey(row) === selectedMapProjectKey}
+                />
               ))}
             </div>
           ) : (
