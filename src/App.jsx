@@ -209,6 +209,7 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
+  const fittedRowsSignatureRef = useRef("");
   const [mapSize, setMapSize] = useState("compact");
   const [collapsed, setCollapsed] = useState(false);
   const mappedRows = useMemo(
@@ -217,6 +218,13 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
         .map((row) => ({ row, coordinates: getProjectCoordinates(row) }))
         .filter((item) => item.coordinates),
     [rows],
+  );
+  const mappedRowsSignature = useMemo(
+    () =>
+      mappedRows
+        .map(({ row, coordinates }) => `${projectKey(row)}:${coordinates.latitude},${coordinates.longitude}`)
+        .join("|"),
+    [mappedRows],
   );
   const hasMappedRows = mappedRows.length > 0;
 
@@ -280,15 +288,18 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
       bounds.push([coordinates.latitude, coordinates.longitude]);
     });
 
-    if (bounds.length === 1) {
-      map.setView(bounds[0], 13);
-    } else if (bounds.length > 1) {
-      map.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
+    if (fittedRowsSignatureRef.current !== mappedRowsSignature) {
+      fittedRowsSignatureRef.current = mappedRowsSignature;
+      if (bounds.length === 1) {
+        map.setView(bounds[0], 13);
+      } else if (bounds.length > 1) {
+        map.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
+      }
     }
     window.setTimeout(() => {
       map.invalidateSize();
     }, 0);
-  }, [mappedRows, onProjectSelect, selectedProjectKey]);
+  }, [mappedRows, mappedRowsSignature, onProjectSelect, selectedProjectKey]);
 
   useEffect(() => {
     window.setTimeout(() => {
