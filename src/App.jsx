@@ -83,7 +83,7 @@ function LoginView({ onLogin }) {
           )}
         </div>
         <h1>
-          WML Structural Group Projects
+          WML Structural Group Project
           <span>Management System</span>
         </h1>
         <label htmlFor="password">Password</label>
@@ -204,6 +204,59 @@ function PreviewTable({ rows }) {
   );
 }
 
+function PaginationControls({ currentPage, totalPages, onPageChange }) {
+  const [targetPage, setTargetPage] = useState(String(currentPage));
+
+  useEffect(() => {
+    setTargetPage(String(currentPage));
+  }, [currentPage]);
+
+  function clampPage(value) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) {
+      return currentPage;
+    }
+    return Math.min(totalPages, Math.max(1, parsed));
+  }
+
+  function jumpToPage(event) {
+    event.preventDefault();
+    onPageChange(clampPage(targetPage));
+  }
+
+  return (
+    <form className="pagination" onSubmit={jumpToPage}>
+      <button
+        type="button"
+        disabled={currentPage <= 1}
+        onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+      >
+        Previous
+      </button>
+      <div className="page-jump">
+        <span>Page</span>
+        <input
+          aria-label="Page number"
+          type="number"
+          min="1"
+          max={totalPages}
+          value={targetPage}
+          onChange={(event) => setTargetPage(event.target.value)}
+        />
+        <span>of {totalPages}</span>
+        <button type="submit">Go</button>
+      </div>
+      <button
+        type="button"
+        disabled={currentPage >= totalPages}
+        onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+      >
+        Next
+      </button>
+    </form>
+  );
+}
+
 export default function App() {
   const [password, setPassword] = useState(() => sessionStorage.getItem(PASSWORD_KEY) || "");
   const [authenticated, setAuthenticated] = useState(() => Boolean(sessionStorage.getItem(PASSWORD_KEY)));
@@ -309,7 +362,7 @@ export default function App() {
             )}
           </div>
           <div>
-            <h1>WML Structural Group Projects Management System</h1>
+            <h1>WML Structural Group Project Management System</h1>
             <p>
               {payload
                 ? `${payload.recordCount.toLocaleString()} project records from ${payload.sourceFileCount} files`
@@ -329,7 +382,7 @@ export default function App() {
             id="keyword"
             label="Keyword"
             value={keywordText}
-            placeholder="retaining wall certification treendale"
+            placeholder="retaining wall"
             onChange={setKeywordText}
           />
           <SearchField
@@ -393,20 +446,11 @@ export default function App() {
             <p className="empty-state">No projects were found for the current search.</p>
           )}
           {total > PAGE_SIZE ? (
-            <div className="pagination">
-              <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))}>
-                Previous
-              </button>
-              <span>
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-              >
-                Next
-              </button>
-            </div>
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setPage}
+            />
           ) : null}
         </section>
       ) : (

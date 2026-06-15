@@ -163,6 +163,19 @@ button:hover,
   border-color: #1958bd;
 }
 
+button:disabled {
+  color: #94a3b8;
+  background: #e5eaf2;
+  border-color: #d4dce8;
+  cursor: not-allowed;
+}
+
+button:disabled:hover {
+  color: #94a3b8;
+  background: #e5eaf2;
+  border-color: #d4dce8;
+}
+
 .ghost-button {
   color: #1f2937;
   background: #ffffff;
@@ -337,6 +350,27 @@ button:hover,
   font-weight: 700;
 }
 
+.page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 4px;
+}
+
+.page-jump input {
+  width: 70px;
+  min-height: 38px;
+  padding: 7px 8px;
+  text-align: center;
+  font-weight: 800;
+}
+
+.page-jump button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
 .table-wrap {
   overflow: auto;
   border: 1px solid #dbe3ef;
@@ -421,5 +455,15 @@ td {
   .toolbar button,
   .ghost-button {
     width: 100%;
+  }
+
+  .pagination {
+    flex-wrap: wrap;
+  }
+
+  .page-jump {
+    order: -1;
+    width: 100%;
+    justify-content: center;
   }
 }

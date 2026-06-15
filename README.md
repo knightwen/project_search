@@ -26,7 +26,7 @@ The local Vite server prints the browser URL after it starts.
 Local password configuration lives in `.env.local`:
 
 ```text
-SEARCH_PASSWORD=20260526
+SEARCH_PASSWORD=wml_structure
 ```
 
 This file is ignored by Git.
@@ -48,7 +48,7 @@ The login page and main header load that file as `/wml-logo.png`. If the file is
 3. Add this Vercel environment variable:
 
 ```text
-SEARCH_PASSWORD=20260526
+SEARCH_PASSWORD=wml_structure
 ```
 
 4. Use these settings:
