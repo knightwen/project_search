@@ -38,6 +38,15 @@ const PREVIEW_COLUMNS = [
   "Industry/Sector",
   "Project Profile",
 ];
+const MOBILE_RESULT_COLUMNS = [
+  ["Project ID", "ID", "id"],
+  ["Project Name", "Name", "name"],
+  ["Client", "Client", "client"],
+  ["Manager", "Manager", "manager"],
+  ["Industry/Sector", "Sector", "sector"],
+  ["Project Profile", "Profile", "profile"],
+  ["Description", "Description", "description"],
+];
 
 function textValue(value) {
   if (value === null || value === undefined) {
@@ -575,6 +584,50 @@ function PreviewTable({ rows }) {
   );
 }
 
+function MobileResultsTable({ rows, selectedProjectKey, onSelect }) {
+  return (
+    <div className="table-wrap mobile-results-table">
+      <table>
+        <colgroup>
+          {MOBILE_RESULT_COLUMNS.map(([, label, key]) => (
+            <col key={label} className={`mobile-col-${key}`} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            {MOBILE_RESULT_COLUMNS.map(([, label]) => (
+              <th key={label}>{label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const rowKey = projectKey(row);
+            const selected = Boolean(selectedProjectKey) && rowKey === selectedProjectKey;
+            return (
+              <tr key={`${rowKey || "project"}-${index}`} className={selected ? "selected-mobile-row" : ""}>
+                {MOBILE_RESULT_COLUMNS.map(([column, label]) => (
+                  <td key={column}>
+                    {column === "Project ID" ? (
+                      <button className="project-id-link" type="button" onClick={() => onSelect?.(row)}>
+                        {textValue(row[column]) || "No ID"}
+                      </button>
+                    ) : (
+                      <span className="mobile-cell-text" title={textValue(row[column])}>
+                        {textValue(row[column]) || (label === "Client" || label === "Manager" ? "Not specified" : "")}
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PaginationControls({ currentPage, totalPages, onPageChange }) {
   const [targetPage, setTargetPage] = useState(String(currentPage));
 
@@ -876,16 +929,23 @@ export default function App() {
             </div>
           ) : null}
           {rows.length ? (
-            <div className="result-list">
-              {displayRows.map((row, index) => (
-                <ProjectResult
-                  key={`${projectKey(row) || "project"}-${index}`}
-                  row={row}
-                  selected={Boolean(selectedMapProjectKey) && projectKey(row) === selectedMapProjectKey}
-                  onSelect={selectProjectFromList}
-                />
-              ))}
-            </div>
+            <>
+              <MobileResultsTable
+                rows={displayRows}
+                selectedProjectKey={selectedMapProjectKey}
+                onSelect={selectProjectFromList}
+              />
+              <div className="result-list">
+                {displayRows.map((row, index) => (
+                  <ProjectResult
+                    key={`${projectKey(row) || "project"}-${index}`}
+                    row={row}
+                    selected={Boolean(selectedMapProjectKey) && projectKey(row) === selectedMapProjectKey}
+                    onSelect={selectProjectFromList}
+                  />
+                ))}
+              </div>
+            </>
           ) : (
             <p className="empty-state">No projects were found for the current search.</p>
           )}
