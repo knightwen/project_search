@@ -291,7 +291,7 @@ button:disabled:hover {
   width: 100vw;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   margin: 0;
   border: 0;
   border-radius: 0;
@@ -306,6 +306,37 @@ button:disabled:hover {
 .results-map-panel:fullscreen .map-canvas.large {
   height: 100%;
   min-height: 0;
+}
+
+.fullscreen-map-search {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(140px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px 12px;
+  border-bottom: 1px solid #dbe3ef;
+  background: #ffffff;
+}
+
+.fullscreen-map-search .field span {
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+}
+
+.fullscreen-map-search input {
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.fullscreen-map-search-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fullscreen-map-search-actions .icon-button {
+  min-height: 36px;
+  white-space: nowrap;
 }
 
 .map-summary {
@@ -680,6 +711,14 @@ td {
     margin-top: 6px;
   }
 
+  .fullscreen-map-search {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fullscreen-map-search-actions {
+    grid-column: 1 / -1;
+  }
+
   .map-canvas {
     height: 300px;
   }
@@ -707,6 +746,15 @@ td {
   .toolbar button,
   .ghost-button {
     width: 100%;
+  }
+
+  .fullscreen-map-search {
+    grid-template-columns: 1fr;
+  }
+
+  .fullscreen-map-search-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .pagination {

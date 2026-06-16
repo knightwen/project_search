@@ -237,7 +237,64 @@ function ProjectResult({ row, selected = false }) {
   );
 }
 
-function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
+function FullscreenMapSearch({ filters, onChange, onSubmit, onClear }) {
+  return (
+    <form className="fullscreen-map-search" onSubmit={onSubmit}>
+      <SearchField
+        id="fullscreen-keyword"
+        label="Keyword"
+        value={filters.keywordText}
+        placeholder="retaining wall"
+        onChange={(value) => onChange("keywordText", value)}
+        onEnter={onSubmit}
+      />
+      <SearchField
+        id="fullscreen-project-id"
+        label="Project ID"
+        value={filters.projectIdText}
+        placeholder="8443"
+        onChange={(value) => onChange("projectIdText", value)}
+        onEnter={onSubmit}
+      />
+      <SearchField
+        id="fullscreen-client"
+        label="Client"
+        value={filters.clientText}
+        placeholder="Calibre"
+        onChange={(value) => onChange("clientText", value)}
+        onEnter={onSubmit}
+      />
+      <SearchField
+        id="fullscreen-manager"
+        label="Manager"
+        value={filters.managerText}
+        placeholder="Michael Kelly"
+        onChange={(value) => onChange("managerText", value)}
+        onEnter={onSubmit}
+      />
+      <div className="fullscreen-map-search-actions">
+        <ActionButton icon={Search} type="submit">
+          Search
+        </ActionButton>
+        <ActionButton icon={RefreshCw} onClick={onClear}>
+          Clear
+        </ActionButton>
+      </div>
+    </form>
+  );
+}
+
+function ResultsMap({
+  rows,
+  total,
+  totalLabel,
+  selectedProjectKey,
+  onProjectSelect,
+  filters,
+  onFilterChange,
+  onSearchSubmit,
+  onSearchClear,
+}) {
   const mapPanelRef = useRef(null);
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
@@ -261,6 +318,9 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
     [mappedRows],
   );
   const hasMappedRows = mappedRows.length > 0;
+  const fullscreenActive =
+    fullscreen && typeof document !== "undefined" && document.fullscreenElement === mapPanelRef.current;
+  const showFullscreenUi = fullscreen || fullscreenActive;
 
   useEffect(() => {
     if (!hasMappedRows || !mapElementRef.current || mapRef.current) {
@@ -309,8 +369,8 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
           iconAnchor: isSelected ? [9, 9] : [7, 7],
         }),
       });
-      marker.bindPopup(projectPopupHtml(row, fullscreen), {
-        maxWidth: fullscreen ? 520 : 280,
+      marker.bindPopup(projectPopupHtml(row, showFullscreenUi), {
+        maxWidth: showFullscreenUi ? 520 : 280,
       });
       marker.on("click", () => {
         onProjectSelect?.(row);
@@ -336,11 +396,11 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
     window.setTimeout(() => {
       map.invalidateSize();
     }, 0);
-  }, [fullscreen, mappedRows, mappedRowsSignature, onProjectSelect, selectedProjectKey]);
+  }, [mappedRows, mappedRowsSignature, onProjectSelect, selectedProjectKey, showFullscreenUi]);
 
   useEffect(() => {
     function handleFullscreenChange() {
-      const isMapFullscreen = document.fullscreenElement === mapPanelRef.current;
+      const isMapFullscreen = Boolean(document.fullscreenElement && document.fullscreenElement === mapPanelRef.current);
       setFullscreen(isMapFullscreen);
       window.setTimeout(() => {
         mapRef.current?.invalidateSize();
@@ -357,7 +417,7 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
     window.setTimeout(() => {
       mapRef.current?.invalidateSize();
     }, 0);
-  }, [mapSize, collapsed, fullscreen]);
+  }, [mapSize, collapsed, showFullscreenUi]);
 
   function enableScrollZoom() {
     mapRef.current?.scrollWheelZoom.enable();
@@ -375,6 +435,9 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
 
     setCollapsed(false);
     await mapPanelRef.current?.requestFullscreen?.();
+    if (document.fullscreenElement === mapPanelRef.current) {
+      setFullscreen(true);
+    }
     window.setTimeout(() => {
       mapRef.current?.invalidateSize();
     }, 0);
@@ -382,62 +445,96 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
 
   if (!hasMappedRows) {
     return (
-      <section className="results-map-panel">
+      <section className="results-map-panel" ref={mapPanelRef}>
         <div className="map-summary">
-          <h3>Map</h3>
+          <div>
+            <h3>Map</h3>
+          </div>
           <p>No matching projects with coordinates.</p>
+          <div className="map-controls">
+            <button
+              className="map-collapse-button"
+              type="button"
+              onClick={toggleFullscreen}
+              title={showFullscreenUi ? "Exit full screen" : "Full screen"}
+            >
+              {showFullscreenUi ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+              <span>{showFullscreenUi ? "Exit" : "Full screen"}</span>
+            </button>
+          </div>
         </div>
+        {showFullscreenUi ? (
+          <FullscreenMapSearch
+            filters={filters}
+            onChange={onFilterChange}
+            onSubmit={onSearchSubmit}
+            onClear={onSearchClear}
+          />
+        ) : null}
+        <p className="empty-state map-empty-state">No map markers to display for the current results.</p>
       </section>
     );
   }
 
   return (
     <section className="results-map-panel" ref={mapPanelRef}>
-        <div className="map-summary">
-          <div>
-            <h3>Map</h3>
-          </div>
+      <div className="map-summary">
+        <div>
+          <h3>Map</h3>
+        </div>
         <p>
           Showing {mappedRows.length.toLocaleString()} mapped projects from{" "}
-          {total.toLocaleString()} matching results.
+          {totalLabel || `${total.toLocaleString()} matching results`}.
         </p>
         <div className="map-controls">
-          <div className="map-size-toggle" aria-label="Map size">
-            <button
-              type="button"
-              className={mapSize === "compact" ? "active" : ""}
-              onClick={() => setMapSize("compact")}
-              disabled={collapsed}
-            >
-              Compact
-            </button>
-            <button
-              type="button"
-              className={mapSize === "large" ? "active" : ""}
-              onClick={() => setMapSize("large")}
-              disabled={collapsed}
-            >
-              Large
-            </button>
-          </div>
-          <button
-            className="map-collapse-button"
-            type="button"
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            {collapsed ? "Expand" : "Collapse"}
-          </button>
+          {!showFullscreenUi ? (
+            <>
+              <div className="map-size-toggle" aria-label="Map size">
+                <button
+                  type="button"
+                  className={mapSize === "compact" ? "active" : ""}
+                  onClick={() => setMapSize("compact")}
+                  disabled={collapsed}
+                >
+                  Compact
+                </button>
+                <button
+                  type="button"
+                  className={mapSize === "large" ? "active" : ""}
+                  onClick={() => setMapSize("large")}
+                  disabled={collapsed}
+                >
+                  Large
+                </button>
+              </div>
+              <button
+                className="map-collapse-button"
+                type="button"
+                onClick={() => setCollapsed((value) => !value)}
+              >
+                {collapsed ? "Expand" : "Collapse"}
+              </button>
+            </>
+          ) : null}
           <button
             className="map-collapse-button"
             type="button"
             onClick={toggleFullscreen}
-            title={fullscreen ? "Exit full screen" : "Full screen"}
+            title={showFullscreenUi ? "Exit full screen" : "Full screen"}
           >
-            {fullscreen ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
-            <span>{fullscreen ? "Exit" : "Full screen"}</span>
+            {showFullscreenUi ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+            <span>{showFullscreenUi ? "Exit" : "Full screen"}</span>
           </button>
         </div>
       </div>
+      {showFullscreenUi ? (
+        <FullscreenMapSearch
+          filters={filters}
+          onChange={onFilterChange}
+          onSubmit={onSearchSubmit}
+          onClear={onSearchClear}
+        />
+      ) : null}
       <div
         className={`map-canvas ${mapSize === "large" ? "large" : ""} ${collapsed ? "collapsed" : ""}`}
         ref={mapElementRef}
@@ -580,11 +677,8 @@ export default function App() {
         if (!cancelled) {
           setPayload(nextPayload);
         }
-        if (!cancelled && searching) {
-          return searchApi({ password, filters, page: 1, includeAll: true });
-        }
         if (!cancelled) {
-          setMapRows([]);
+          return searchApi({ password, filters, page: 1, includeAll: true });
         }
         return null;
       })
@@ -646,6 +740,16 @@ export default function App() {
     setSubmittedFilters(draftFilters);
     setSelectedMapProject(null);
     setPage(1);
+  }
+
+  function updateDraftFilter(key, value) {
+    const setters = {
+      keywordText: setKeywordText,
+      projectIdText: setProjectIdText,
+      clientText: setClientText,
+      managerText: setManagerText,
+    };
+    setters[key]?.(value);
   }
 
   async function downloadCsv() {
@@ -782,8 +886,13 @@ export default function App() {
           <ResultsMap
             rows={mapRows}
             total={total}
+            totalLabel={`${total.toLocaleString()} matching results`}
             selectedProjectKey={selectedMapProjectKey}
             onProjectSelect={setSelectedMapProject}
+            filters={draftFilters}
+            onFilterChange={updateDraftFilter}
+            onSearchSubmit={submitSearch}
+            onSearchClear={clearSearch}
           />
           {rows.length ? (
             <div className="result-list">
@@ -812,6 +921,17 @@ export default function App() {
             <h2>Project Data Preview</h2>
             <p>First 20 rows</p>
           </div>
+          <ResultsMap
+            rows={mapRows.length ? mapRows : rows}
+            total={total}
+            totalLabel={`${total.toLocaleString()} project records`}
+            selectedProjectKey={selectedMapProjectKey}
+            onProjectSelect={setSelectedMapProject}
+            filters={draftFilters}
+            onFilterChange={updateDraftFilter}
+            onSearchSubmit={submitSearch}
+            onSearchClear={clearSearch}
+          />
           <PreviewTable rows={rows} />
         </section>
       )}
