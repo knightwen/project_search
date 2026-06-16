@@ -287,6 +287,27 @@ button:disabled:hover {
   overflow: hidden;
 }
 
+.results-map-panel:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.results-map-panel:fullscreen .map-summary {
+  border-radius: 0;
+}
+
+.results-map-panel:fullscreen .map-canvas,
+.results-map-panel:fullscreen .map-canvas.large {
+  height: 100%;
+  min-height: 0;
+}
+
 .map-summary {
   position: relative;
   z-index: 20;
@@ -378,16 +399,30 @@ button:disabled:hover {
   z-index: 1;
 }
 
+.map-canvas.leaflet-container,
+.map-canvas.leaflet-grab,
 .map-canvas .leaflet-container,
 .map-canvas .leaflet-grab,
 .map-canvas .leaflet-interactive {
   cursor: pointer;
 }
 
+.map-canvas.leaflet-dragging,
+.map-canvas.leaflet-dragging *,
+.map-canvas.leaflet-dragging .leaflet-grab,
+.map-canvas.leaflet-dragging .leaflet-interactive,
 .map-canvas .leaflet-dragging,
 .map-canvas .leaflet-dragging .leaflet-grab,
 .map-canvas .leaflet-dragging .leaflet-interactive {
-  cursor: grabbing;
+  cursor: grabbing !important;
+}
+
+body.leaflet-dragging .map-canvas,
+body.leaflet-dragging .map-canvas *,
+body.leaflet-dragging .map-canvas.leaflet-grab,
+body.leaflet-dragging .map-canvas .leaflet-grab,
+body.leaflet-dragging .map-canvas .leaflet-interactive {
+  cursor: grabbing !important;
 }
 
 .map-canvas.large {
@@ -424,6 +459,47 @@ button:disabled:hover {
   margin: 10px 12px;
   color: #172033;
   line-height: 1.35;
+}
+
+.project-popup-title {
+  min-width: 180px;
+}
+
+.project-popup-title strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.95rem;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
+}
+
+.project-popup-details {
+  display: grid;
+  gap: 7px;
+  max-width: 500px;
+  max-height: min(48vh, 360px);
+  margin: 10px 0 0;
+  overflow: auto;
+}
+
+.project-popup-field {
+  display: grid;
+  gap: 2px;
+}
+
+.project-popup-field dt {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.project-popup-field dd {
+  margin: 0;
+  color: #172033;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .result-row {

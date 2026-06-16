@@ -5,6 +5,8 @@ import {
   ExternalLink,
   FileDown,
   LogOut,
+  Maximize2,
+  Minimize2,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -55,11 +57,34 @@ function projectKey(row) {
   return textValue(row?.["Project ID"]) || projectLabel(row);
 }
 
-function projectPopupHtml(row) {
-  return (
-    `<strong>${escapeHtml(textValue(row["Project ID"]) || "No Project ID")}</strong><br>` +
-    `${escapeHtml(textValue(row["Project Name"]) || projectLabel(row))}`
-  );
+function projectPopupHtml(row, detailed = false) {
+  const projectId = textValue(row["Project ID"]) || "No Project ID";
+  const projectName = textValue(row["Project Name"]) || projectLabel(row);
+  const title =
+    `<div class="project-popup-title">` +
+    `<strong>${escapeHtml(`${projectId} - ${projectName}`)}</strong>` +
+    `</div>`;
+
+  if (!detailed) {
+    return title;
+  }
+
+  const details = ["Client", "Manager", "Industry/Sector", "Project Profile"]
+    .map((column) => {
+      const value = textValue(row[column]);
+      if (!value) {
+        return "";
+      }
+      return (
+        `<div class="project-popup-field">` +
+        `<dt>${escapeHtml(column)}</dt>` +
+        `<dd>${escapeHtml(value)}</dd>` +
+        `</div>`
+      );
+    })
+    .join("");
+
+  return `${title}<dl class="project-popup-details">${details}</dl>`;
 }
 
 async function searchApi({ password, filters = {}, page = 1, includeAll = false }) {
@@ -213,12 +238,14 @@ function ProjectResult({ row, selected = false }) {
 }
 
 function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
+  const mapPanelRef = useRef(null);
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
   const fittedRowsSignatureRef = useRef("");
   const [mapSize, setMapSize] = useState("compact");
   const [collapsed, setCollapsed] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const mappedRows = useMemo(
     () =>
       rows
@@ -282,7 +309,9 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
           iconAnchor: isSelected ? [9, 9] : [7, 7],
         }),
       });
-      marker.bindPopup(projectPopupHtml(row));
+      marker.bindPopup(projectPopupHtml(row, fullscreen), {
+        maxWidth: fullscreen ? 520 : 280,
+      });
       marker.on("click", () => {
         onProjectSelect?.(row);
         marker.openPopup();
@@ -307,13 +336,28 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
     window.setTimeout(() => {
       map.invalidateSize();
     }, 0);
-  }, [mappedRows, mappedRowsSignature, onProjectSelect, selectedProjectKey]);
+  }, [fullscreen, mappedRows, mappedRowsSignature, onProjectSelect, selectedProjectKey]);
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      const isMapFullscreen = document.fullscreenElement === mapPanelRef.current;
+      setFullscreen(isMapFullscreen);
+      window.setTimeout(() => {
+        mapRef.current?.invalidateSize();
+      }, 0);
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   useEffect(() => {
     window.setTimeout(() => {
       mapRef.current?.invalidateSize();
     }, 0);
-  }, [mapSize, collapsed]);
+  }, [mapSize, collapsed, fullscreen]);
 
   function enableScrollZoom() {
     mapRef.current?.scrollWheelZoom.enable();
@@ -321,6 +365,19 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
 
   function disableScrollZoom() {
     mapRef.current?.scrollWheelZoom.disable();
+  }
+
+  async function toggleFullscreen() {
+    if (document.fullscreenElement === mapPanelRef.current) {
+      await document.exitFullscreen?.();
+      return;
+    }
+
+    setCollapsed(false);
+    await mapPanelRef.current?.requestFullscreen?.();
+    window.setTimeout(() => {
+      mapRef.current?.invalidateSize();
+    }, 0);
   }
 
   if (!hasMappedRows) {
@@ -335,7 +392,7 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
   }
 
   return (
-    <section className="results-map-panel">
+    <section className="results-map-panel" ref={mapPanelRef}>
         <div className="map-summary">
           <div>
             <h3>Map</h3>
@@ -369,6 +426,15 @@ function ResultsMap({ rows, total, selectedProjectKey, onProjectSelect }) {
             onClick={() => setCollapsed((value) => !value)}
           >
             {collapsed ? "Expand" : "Collapse"}
+          </button>
+          <button
+            className="map-collapse-button"
+            type="button"
+            onClick={toggleFullscreen}
+            title={fullscreen ? "Exit full screen" : "Full screen"}
+          >
+            {fullscreen ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+            <span>{fullscreen ? "Exit" : "Full screen"}</span>
           </button>
         </div>
       </div>
