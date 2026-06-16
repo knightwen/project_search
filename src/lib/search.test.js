@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   containsTerms,
   filterProjects,
+  isAllProjectsSearch,
   normalizeProject,
   safeDownloadName,
 } from "./search.js";
@@ -57,6 +58,17 @@ describe("search helpers", () => {
 
     assert.equal(result.length, 1);
     assert.equal(result[0]["Project ID"], "8443");
+  });
+
+  it("treats keyword all as a request for every project", () => {
+    const rows = [
+      { "Project ID": "8443", "Project Name": "Treendale retaining wall" },
+      { "Project ID": "1200", "Project Name": "Warehouse slab" },
+    ];
+
+    assert.equal(isAllProjectsSearch({ keywordText: " all " }), true);
+    assert.equal(isAllProjectsSearch({ keywordText: "all", clientText: "Calibre" }), false);
+    assert.deepEqual(filterProjects(rows, { keywordText: "all" }), rows);
   });
 
   it("builds Windows-safe CSV download names", () => {

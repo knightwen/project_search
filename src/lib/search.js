@@ -95,6 +95,10 @@ export function filterProjects(rows, filters) {
     managerText = "",
   } = filters;
 
+  if (isAllProjectsSearch(filters)) {
+    return rows;
+  }
+
   return rows.filter((row) => {
     const normalized = normalizeProject(row);
     if (cleanValue(keywordText) && !containsTerms(textForColumns(normalized, KEYWORD_COLUMNS), keywordText)) {
@@ -111,6 +115,15 @@ export function filterProjects(rows, filters) {
     }
     return true;
   });
+}
+
+export function isAllProjectsSearch(filters = {}) {
+  return (
+    cleanValue(filters.keywordText).toLowerCase() === "all" &&
+    !cleanValue(filters.projectIdText) &&
+    !cleanValue(filters.clientText) &&
+    !cleanValue(filters.managerText)
+  );
 }
 
 export function hasAnySearch(...values) {

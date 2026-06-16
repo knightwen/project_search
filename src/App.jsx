@@ -317,13 +317,12 @@ function ResultsMap({
         .join("|"),
     [mappedRows],
   );
-  const hasMappedRows = mappedRows.length > 0;
   const fullscreenActive =
     fullscreen && typeof document !== "undefined" && document.fullscreenElement === mapPanelRef.current;
   const showFullscreenUi = fullscreen || fullscreenActive;
 
   useEffect(() => {
-    if (!hasMappedRows || !mapElementRef.current || mapRef.current) {
+    if (!mapElementRef.current || mapRef.current) {
       return;
     }
 
@@ -348,7 +347,7 @@ function ResultsMap({
       mapRef.current = null;
       layerRef.current = null;
     };
-  }, [hasMappedRows]);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -391,6 +390,8 @@ function ResultsMap({
         map.setView(bounds[0], 13);
       } else if (bounds.length > 1) {
         map.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
+      } else {
+        map.setView([-31.95, 115.86], 6);
       }
     }
     window.setTimeout(() => {
@@ -441,39 +442,6 @@ function ResultsMap({
     window.setTimeout(() => {
       mapRef.current?.invalidateSize();
     }, 0);
-  }
-
-  if (!hasMappedRows) {
-    return (
-      <section className="results-map-panel" ref={mapPanelRef}>
-        <div className="map-summary">
-          <div>
-            <h3>Map</h3>
-          </div>
-          <p>No matching projects with coordinates.</p>
-          <div className="map-controls">
-            <button
-              className="map-collapse-button"
-              type="button"
-              onClick={toggleFullscreen}
-              title={showFullscreenUi ? "Exit full screen" : "Full screen"}
-            >
-              {showFullscreenUi ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
-              <span>{showFullscreenUi ? "Exit" : "Full screen"}</span>
-            </button>
-          </div>
-        </div>
-        {showFullscreenUi ? (
-          <FullscreenMapSearch
-            filters={filters}
-            onChange={onFilterChange}
-            onSubmit={onSearchSubmit}
-            onClear={onSearchClear}
-          />
-        ) : null}
-        <p className="empty-state map-empty-state">No map markers to display for the current results.</p>
-      </section>
-    );
   }
 
   return (
@@ -672,12 +640,13 @@ export default function App() {
 
     let cancelled = false;
     setLoadError("");
+    setMapRows([]);
     searchApi({ password, filters, page })
       .then((nextPayload) => {
         if (!cancelled) {
           setPayload(nextPayload);
         }
-        if (!cancelled) {
+        if (!cancelled && searching) {
           return searchApi({ password, filters, page: 1, includeAll: true });
         }
         return null;
@@ -922,9 +891,9 @@ export default function App() {
             <p>First 20 rows</p>
           </div>
           <ResultsMap
-            rows={mapRows.length ? mapRows : rows}
-            total={total}
-            totalLabel={`${total.toLocaleString()} project records`}
+            rows={[]}
+            total={0}
+            totalLabel="preview mode"
             selectedProjectKey={selectedMapProjectKey}
             onProjectSelect={setSelectedMapProject}
             filters={draftFilters}
