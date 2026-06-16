@@ -9,6 +9,8 @@ import {
   Minimize2,
   RefreshCw,
   Search,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import {
   DISPLAY_COLUMNS,
@@ -87,6 +89,15 @@ function projectPopupHtml(row, detailed = false) {
   return `${title}<dl class="project-popup-details">${details}</dl>`;
 }
 
+function refreshMapSize(map) {
+  window.setTimeout(() => {
+    map?.invalidateSize();
+  }, 0);
+  window.setTimeout(() => {
+    map?.invalidateSize();
+  }, 160);
+}
+
 async function searchApi({ password, filters = {}, page = 1, includeAll = false }) {
   const response = await fetch("/api/search", {
     method: "POST",
@@ -156,10 +167,10 @@ function LoginView({ onLogin }) {
   );
 }
 
-function SearchField({ id, label, value, placeholder, onChange, onEnter }) {
+function SearchField({ id, label, value, placeholder, onChange, onEnter, compact = false }) {
   return (
-    <label className="field" htmlFor={id}>
-      <span>{label}</span>
+    <label className={`field ${compact ? "compact" : ""}`} htmlFor={id}>
+      {compact ? null : <span>{label}</span>}
       <input
         id={id}
         value={value}
@@ -176,17 +187,18 @@ function SearchField({ id, label, value, placeholder, onChange, onEnter }) {
   );
 }
 
-function ActionButton({ children, icon: Icon, ...props }) {
+function ActionButton({ children, icon: Icon, className = "", ...props }) {
   return (
-    <button className="icon-button" type="button" {...props}>
+    <button className={`icon-button ${className}`.trim()} type="button" {...props}>
       {Icon ? <Icon size={16} aria-hidden="true" /> : null}
       <span>{children}</span>
     </button>
   );
 }
 
-function ProjectResult({ row, selected = false }) {
-  const label = projectLabel(row);
+function ProjectResult({ row, selected = false, onSelect }) {
+  const projectId = textValue(row["Project ID"]) || "No Project ID";
+  const projectName = textValue(row["Project Name"]) || projectLabel(row);
   const mapUrl = googleMapsUrl(row);
   const kml = projectKml(row);
 
@@ -200,7 +212,12 @@ function ProjectResult({ row, selected = false }) {
   return (
     <article className={`result-row ${selected ? "selected" : ""}`}>
       <div className="result-main">
-        <h3>{label}</h3>
+        <h3 className="result-title">
+          <button className="project-id-link" type="button" onClick={() => onSelect?.(row)}>
+            {projectId}
+          </button>
+          <span>- {projectName}</span>
+        </h3>
         <dl>
           {["Client", "Manager", "Industry/Sector", "Project Profile", "Description"].map((column) => {
             const value = textValue(row[column]);
@@ -216,7 +233,7 @@ function ProjectResult({ row, selected = false }) {
           })}
         </dl>
       </div>
-      <div className="result-actions">
+      <div className="result-actions" onClick={(event) => event.stopPropagation()}>
         {mapUrl ? (
           <a className="icon-link" href={mapUrl} target="_blank" rel="noreferrer">
             <ExternalLink size={16} aria-hidden="true" />
@@ -237,48 +254,77 @@ function ProjectResult({ row, selected = false }) {
   );
 }
 
-function FullscreenMapSearch({ filters, onChange, onSubmit, onClear }) {
+function IconOnlyButton({ icon: Icon, label, className = "", ...props }) {
   return (
-    <form className="fullscreen-map-search" onSubmit={onSubmit}>
-      <SearchField
-        id="fullscreen-keyword"
-        label="Keyword"
-        value={filters.keywordText}
-        placeholder="retaining wall"
-        onChange={(value) => onChange("keywordText", value)}
-        onEnter={onSubmit}
-      />
-      <SearchField
-        id="fullscreen-project-id"
-        label="Project ID"
-        value={filters.projectIdText}
-        placeholder="8443"
-        onChange={(value) => onChange("projectIdText", value)}
-        onEnter={onSubmit}
-      />
-      <SearchField
-        id="fullscreen-client"
-        label="Client"
-        value={filters.clientText}
-        placeholder="Calibre"
-        onChange={(value) => onChange("clientText", value)}
-        onEnter={onSubmit}
-      />
-      <SearchField
-        id="fullscreen-manager"
-        label="Manager"
-        value={filters.managerText}
-        placeholder="Michael Kelly"
-        onChange={(value) => onChange("managerText", value)}
-        onEnter={onSubmit}
-      />
-      <div className="fullscreen-map-search-actions">
-        <ActionButton icon={Search} type="submit">
-          Search
-        </ActionButton>
-        <ActionButton icon={RefreshCw} onClick={onClear}>
-          Clear
-        </ActionButton>
+    <button className={`icon-only-button ${className}`.trim()} type="button" aria-label={label} title={label} {...props}>
+      <Icon size={20} aria-hidden="true" />
+    </button>
+  );
+}
+
+function MapSearchOverlay({ filters, onChange, onSubmit, onClear }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  return (
+    <form className="map-search-overlay" onSubmit={onSubmit}>
+      <div className="map-search-primary">
+        <SearchField
+          id="map-keyword"
+          label="Keyword"
+          value={filters.keywordText}
+          placeholder="Keyword"
+          onChange={(value) => onChange("keywordText", value)}
+          onEnter={onSubmit}
+          compact
+        />
+        <SearchField
+          id="map-client"
+          label="Client"
+          value={filters.clientText}
+          placeholder="Client"
+          onChange={(value) => onChange("clientText", value)}
+          onEnter={onSubmit}
+          compact
+        />
+        <SearchField
+          id="map-manager"
+          label="Manager"
+          value={filters.managerText}
+          placeholder="Manager"
+          onChange={(value) => onChange("managerText", value)}
+          onEnter={onSubmit}
+          compact
+        />
+        <div className="map-search-actions">
+          <IconOnlyButton icon={Search} label="Search" type="submit" />
+          <IconOnlyButton icon={X} label="Clear" onClick={onClear} />
+          <IconOnlyButton
+            icon={SlidersHorizontal}
+            label="Filters"
+            className={`icon-only-button mobile-filter-toggle ${filtersOpen ? "active" : ""}`}
+            onClick={() => setFiltersOpen((value) => !value)}
+          />
+        </div>
+      </div>
+      <div className={`mobile-filter-panel ${filtersOpen ? "open" : ""}`}>
+        <SearchField
+          id="mobile-map-client"
+          label="Client"
+          value={filters.clientText}
+          placeholder="Client"
+          onChange={(value) => onChange("clientText", value)}
+          onEnter={onSubmit}
+          compact
+        />
+        <SearchField
+          id="mobile-map-manager"
+          label="Manager"
+          value={filters.managerText}
+          placeholder="Manager"
+          onChange={(value) => onChange("managerText", value)}
+          onEnter={onSubmit}
+          compact
+        />
       </div>
     </form>
   );
@@ -294,8 +340,10 @@ function ResultsMap({
   onFilterChange,
   onSearchSubmit,
   onSearchClear,
+  panelRef,
 }) {
-  const mapPanelRef = useRef(null);
+  const internalMapPanelRef = useRef(null);
+  const mapPanelRef = panelRef || internalMapPanelRef;
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
@@ -303,6 +351,7 @@ function ResultsMap({
   const [mapSize, setMapSize] = useState("compact");
   const [collapsed, setCollapsed] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenFallback, setFullscreenFallback] = useState(false);
   const mappedRows = useMemo(
     () =>
       rows
@@ -319,7 +368,11 @@ function ResultsMap({
   );
   const fullscreenActive =
     fullscreen && typeof document !== "undefined" && document.fullscreenElement === mapPanelRef.current;
-  const showFullscreenUi = fullscreen || fullscreenActive;
+  const showFullscreenUi = fullscreenFallback || fullscreen || fullscreenActive;
+  const selectedMappedItem = useMemo(
+    () => mappedRows.find(({ row }) => projectKey(row) === selectedProjectKey),
+    [mappedRows, selectedProjectKey],
+  );
 
   useEffect(() => {
     if (!mapElementRef.current || mapRef.current) {
@@ -328,8 +381,10 @@ function ResultsMap({
 
     mapRef.current = L.map(mapElementRef.current, {
       scrollWheelZoom: false,
+      zoomControl: false,
     }).setView([-31.95, 115.86], 6);
     mapRef.current.attributionControl.setPrefix(false);
+    L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
@@ -338,9 +393,7 @@ function ResultsMap({
     }).addTo(mapRef.current);
 
     layerRef.current = L.layerGroup().addTo(mapRef.current);
-    window.setTimeout(() => {
-      mapRef.current?.invalidateSize();
-    }, 0);
+    refreshMapSize(mapRef.current);
 
     return () => {
       mapRef.current?.remove();
@@ -394,18 +447,28 @@ function ResultsMap({
         map.setView([-31.95, 115.86], 6);
       }
     }
-    window.setTimeout(() => {
-      map.invalidateSize();
-    }, 0);
+    refreshMapSize(map);
   }, [mappedRows, mappedRowsSignature, onProjectSelect, selectedProjectKey, showFullscreenUi]);
+
+  useEffect(() => {
+    if (!selectedMappedItem || !mapRef.current) {
+      return;
+    }
+
+    const { latitude, longitude } = selectedMappedItem.coordinates;
+    mapRef.current.panTo([latitude, longitude], {
+      animate: true,
+    });
+  }, [selectedMappedItem]);
 
   useEffect(() => {
     function handleFullscreenChange() {
       const isMapFullscreen = Boolean(document.fullscreenElement && document.fullscreenElement === mapPanelRef.current);
       setFullscreen(isMapFullscreen);
-      window.setTimeout(() => {
-        mapRef.current?.invalidateSize();
-      }, 0);
+      if (isMapFullscreen) {
+        setFullscreenFallback(false);
+      }
+      refreshMapSize(mapRef.current);
     }
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -415,9 +478,7 @@ function ResultsMap({
   }, []);
 
   useEffect(() => {
-    window.setTimeout(() => {
-      mapRef.current?.invalidateSize();
-    }, 0);
+    refreshMapSize(mapRef.current);
   }, [mapSize, collapsed, showFullscreenUi]);
 
   function enableScrollZoom() {
@@ -429,87 +490,61 @@ function ResultsMap({
   }
 
   async function toggleFullscreen() {
+    if (fullscreenFallback) {
+      setFullscreenFallback(false);
+      refreshMapSize(mapRef.current);
+      return;
+    }
+
     if (document.fullscreenElement === mapPanelRef.current) {
       await document.exitFullscreen?.();
       return;
     }
 
     setCollapsed(false);
-    await mapPanelRef.current?.requestFullscreen?.();
-    if (document.fullscreenElement === mapPanelRef.current) {
-      setFullscreen(true);
+    if (mapPanelRef.current?.requestFullscreen) {
+      try {
+        await mapPanelRef.current.requestFullscreen();
+        if (document.fullscreenElement === mapPanelRef.current) {
+          setFullscreen(true);
+        } else {
+          setFullscreenFallback(true);
+        }
+      } catch {
+        setFullscreenFallback(true);
+      }
+    } else {
+      setFullscreenFallback(true);
     }
-    window.setTimeout(() => {
-      mapRef.current?.invalidateSize();
-    }, 0);
+    refreshMapSize(mapRef.current);
   }
 
   return (
-    <section className="results-map-panel" ref={mapPanelRef}>
-      <div className="map-summary">
-        <div>
-          <h3>Map</h3>
-        </div>
-        <p>
-          Showing {mappedRows.length.toLocaleString()} mapped projects from{" "}
-          {totalLabel || `${total.toLocaleString()} matching results`}.
-        </p>
-        <div className="map-controls">
-          {!showFullscreenUi ? (
-            <>
-              <div className="map-size-toggle" aria-label="Map size">
-                <button
-                  type="button"
-                  className={mapSize === "compact" ? "active" : ""}
-                  onClick={() => setMapSize("compact")}
-                  disabled={collapsed}
-                >
-                  Compact
-                </button>
-                <button
-                  type="button"
-                  className={mapSize === "large" ? "active" : ""}
-                  onClick={() => setMapSize("large")}
-                  disabled={collapsed}
-                >
-                  Large
-                </button>
-              </div>
-              <button
-                className="map-collapse-button"
-                type="button"
-                onClick={() => setCollapsed((value) => !value)}
-              >
-                {collapsed ? "Expand" : "Collapse"}
-              </button>
-            </>
-          ) : null}
-          <button
-            className="map-collapse-button"
-            type="button"
-            onClick={toggleFullscreen}
-            title={showFullscreenUi ? "Exit full screen" : "Full screen"}
-          >
-            {showFullscreenUi ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
-            <span>{showFullscreenUi ? "Exit" : "Full screen"}</span>
-          </button>
-        </div>
-      </div>
-      {showFullscreenUi ? (
-        <FullscreenMapSearch
+    <section className={`results-map-panel ${fullscreenFallback ? "fullscreen-fallback" : ""}`} ref={mapPanelRef}>
+      <div className="map-stage">
+        <MapSearchOverlay
           filters={filters}
           onChange={onFilterChange}
           onSubmit={onSearchSubmit}
           onClear={onSearchClear}
         />
-      ) : null}
-      <div
-        className={`map-canvas ${mapSize === "large" ? "large" : ""} ${collapsed ? "collapsed" : ""}`}
-        ref={mapElementRef}
-        aria-label="Search results map"
-        onMouseEnter={enableScrollZoom}
-        onMouseLeave={disableScrollZoom}
-      />
+        <button
+          className="map-fullscreen-button"
+          type="button"
+          onClick={toggleFullscreen}
+          title={showFullscreenUi ? "Exit full screen" : "Full screen"}
+          aria-label={showFullscreenUi ? "Exit full screen" : "Full screen"}
+        >
+          {showFullscreenUi ? <Minimize2 size={17} aria-hidden="true" /> : <Maximize2 size={17} aria-hidden="true" />}
+        </button>
+        <div
+          className={`map-canvas ${mapSize === "large" ? "large" : ""} ${collapsed ? "collapsed" : ""}`}
+          ref={mapElementRef}
+          aria-label="Search results map"
+          onMouseEnter={enableScrollZoom}
+          onMouseLeave={disableScrollZoom}
+        />
+      </div>
     </section>
   );
 }
@@ -612,6 +647,7 @@ export default function App() {
   const [page, setPage] = useState(1);
   const [mapRows, setMapRows] = useState([]);
   const [selectedMapProject, setSelectedMapProject] = useState(null);
+  const mapSectionRef = useRef(null);
 
   const draftFilters = { keywordText, projectIdText, clientText, managerText };
   const filters = submittedFilters;
@@ -632,6 +668,7 @@ export default function App() {
   const total = payload?.total || 0;
   const totalPages = payload?.totalPages || 1;
   const currentPage = payload?.page || page;
+  const mappedResultCount = mapRows.filter((row) => getProjectCoordinates(row)).length;
 
   useEffect(() => {
     if (!authenticated || !password) {
@@ -721,6 +758,11 @@ export default function App() {
     setters[key]?.(value);
   }
 
+  function selectProjectFromList(row) {
+    setSelectedMapProject(row);
+    mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   async function downloadCsv() {
     try {
       const exportPayload = await searchApi({ password, filters, page: 1, includeAll: true });
@@ -769,7 +811,7 @@ export default function App() {
             )}
           </div>
           <div>
-            <h1>WML Structural Group Project Management System</h1>
+            <h1>Project Showcase | WML Structural Group</h1>
             <p>
               {payload
                 ? `${payload.recordCount.toLocaleString()} project records from ${payload.sourceFileCount} files`
@@ -779,64 +821,9 @@ export default function App() {
         </div>
         <button className="ghost-button" type="button" onClick={logout}>
           <LogOut size={16} aria-hidden="true" />
-          <span>Log out</span>
+          <span className="logout-label">Log out</span>
         </button>
       </header>
-
-      <section className="search-band" aria-label="Project search filters">
-        <form className="search-grid" onSubmit={submitSearch}>
-          <SearchField
-            id="keyword"
-            label="Keyword"
-            value={keywordText}
-            placeholder="retaining wall"
-            onChange={setKeywordText}
-            onEnter={submitSearch}
-          />
-          <SearchField
-            id="project-id"
-            label="Project ID"
-            value={projectIdText}
-            placeholder="8443"
-            onChange={setProjectIdText}
-            onEnter={submitSearch}
-          />
-          <SearchField
-            id="client"
-            label="Client"
-            value={clientText}
-            placeholder="Calibre"
-            onChange={setClientText}
-            onEnter={submitSearch}
-          />
-          <SearchField
-            id="manager"
-            label="Manager"
-            value={managerText}
-            placeholder="Michael Kelly"
-            onChange={setManagerText}
-            onEnter={submitSearch}
-          />
-        </form>
-        <div className="toolbar">
-          <ActionButton icon={Search} onClick={submitSearch}>
-            Search
-          </ActionButton>
-          <ActionButton icon={RefreshCw} onClick={clearSearch}>
-            Clear
-          </ActionButton>
-          {searching && total > 0 ? (
-            <ActionButton icon={Download} onClick={downloadCsv}>
-              CSV
-            </ActionButton>
-          ) : null}
-          {searching && total > 0 ? (
-            <ActionButton icon={FileDown} onClick={downloadSearchKml}>
-              KML
-            </ActionButton>
-          ) : null}
-        </div>
-      </section>
 
       {loadError ? <p className="error-banner">{loadError}</p> : null}
 
@@ -846,10 +833,20 @@ export default function App() {
             <h2>{total.toLocaleString()} matching projects</h2>
             {total > 0 ? (
               <p>
-                Showing {(currentPage - 1) * PAGE_SIZE + 1}-
+                {mappedResultCount.toLocaleString()} mapped projects | Showing {(currentPage - 1) * PAGE_SIZE + 1}-
                 {Math.min(currentPage * PAGE_SIZE, total)} of{" "}
                 {total.toLocaleString()}
               </p>
+            ) : null}
+            {total > 0 ? (
+              <div className="result-export-actions">
+                <ActionButton icon={Download} onClick={downloadCsv}>
+                  CSV
+                </ActionButton>
+                <ActionButton icon={FileDown} onClick={downloadSearchKml}>
+                  KML
+                </ActionButton>
+              </div>
             ) : null}
           </div>
           <ResultsMap
@@ -862,7 +859,22 @@ export default function App() {
             onFilterChange={updateDraftFilter}
             onSearchSubmit={submitSearch}
             onSearchClear={clearSearch}
+            panelRef={mapSectionRef}
           />
+          {total > 0 ? (
+            <div className="mobile-result-summary">
+              <div className="mobile-result-text">
+                <span>{total.toLocaleString()} projects</span>
+                <span>
+                  {mappedResultCount.toLocaleString()} mapped | {(currentPage - 1) * PAGE_SIZE + 1}-
+                  {Math.min(currentPage * PAGE_SIZE, total)} of {total.toLocaleString()}
+                </span>
+              </div>
+              <ActionButton icon={Download} onClick={downloadCsv} className="mobile-csv-button">
+                CSV
+              </ActionButton>
+            </div>
+          ) : null}
           {rows.length ? (
             <div className="result-list">
               {displayRows.map((row, index) => (
@@ -870,6 +882,7 @@ export default function App() {
                   key={`${projectKey(row) || "project"}-${index}`}
                   row={row}
                   selected={Boolean(selectedMapProjectKey) && projectKey(row) === selectedMapProjectKey}
+                  onSelect={selectProjectFromList}
                 />
               ))}
             </div>
@@ -886,10 +899,6 @@ export default function App() {
         </section>
       ) : (
         <section className="results-section">
-          <div className="section-heading">
-            <h2>Project Data Preview</h2>
-            <p>First 20 rows</p>
-          </div>
           <ResultsMap
             rows={[]}
             total={0}
@@ -900,6 +909,7 @@ export default function App() {
             onFilterChange={updateDraftFilter}
             onSearchSubmit={submitSearch}
             onSearchClear={clearSearch}
+            panelRef={mapSectionRef}
           />
           <PreviewTable rows={rows} />
         </section>
