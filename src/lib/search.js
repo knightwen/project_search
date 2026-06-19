@@ -44,6 +44,19 @@ function cleanValue(value) {
   return String(value).trim();
 }
 
+function parseDateValue(value) {
+  const text = cleanValue(value);
+  if (!text) {
+    return null;
+  }
+
+  const parsed = Date.parse(text);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
 function coalesce(row, targetColumn, sourceColumns) {
   const next = { ...row };
   let targetValue = cleanValue(next[targetColumn]);
@@ -93,7 +106,11 @@ export function filterProjects(rows, filters) {
     projectIdText = "",
     clientText = "",
     managerText = "",
+    startDateFrom = "",
+    startDateTo = "",
   } = filters;
+  const fromTime = parseDateValue(startDateFrom);
+  const toTime = parseDateValue(startDateTo);
 
   if (isAllProjectsSearch(filters)) {
     return rows;
@@ -113,6 +130,18 @@ export function filterProjects(rows, filters) {
     if (cleanValue(managerText) && !containsTerms(textForColumns(normalized, MANAGER_COLUMNS), managerText)) {
       return false;
     }
+    if (fromTime !== null || toTime !== null) {
+      const rowTime = parseDateValue(normalized["Start Date"]);
+      if (rowTime === null) {
+        return false;
+      }
+      if (fromTime !== null && rowTime < fromTime) {
+        return false;
+      }
+      if (toTime !== null && rowTime > toTime) {
+        return false;
+      }
+    }
     return true;
   });
 }
@@ -122,7 +151,9 @@ export function isAllProjectsSearch(filters = {}) {
     cleanValue(filters.keywordText).toLowerCase() === "all" &&
     !cleanValue(filters.projectIdText) &&
     !cleanValue(filters.clientText) &&
-    !cleanValue(filters.managerText)
+    !cleanValue(filters.managerText) &&
+    !cleanValue(filters.startDateFrom) &&
+    !cleanValue(filters.startDateTo)
   );
 }
 

@@ -27,6 +27,8 @@ export function createSearchResponse(rows, options = {}) {
     filters.projectIdText || "",
     filters.clientText || "",
     filters.managerText || "",
+    filters.startDateFrom || "",
+    filters.startDateTo || "",
   );
 
   const matchingRows = searching ? filterProjects(rows, filters) : rows;

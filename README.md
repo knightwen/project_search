@@ -27,9 +27,19 @@ Local password configuration lives in `.env.local`:
 
 ```text
 SEARCH_PASSWORD=wml_structure
+DEEPSEEK_API_KEY=your_deepseek_api_key
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
 This file is ignored by Git.
+
+`DEEPSEEK_MODEL` is optional. If it is omitted, the AI Assistant uses `deepseek-v4-flash`.
+
+If local DeepSeek requests fail with a certificate issuer error, install the relevant trusted root certificate for your network. For temporary local development only, you can add:
+
+```text
+DEEPSEEK_ALLOW_INSECURE_TLS=true
+```
 
 ## Company Logo
 

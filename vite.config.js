@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import searchHandler from "./api/search.js";
+import assistantHandler from "./api/assistant.js";
 
 function parseJsonBody(request) {
   return new Promise((resolve) => {
@@ -40,6 +41,10 @@ export default defineConfig({
         server.middlewares.use("/api/search", async (request, response) => {
           request.body = await parseJsonBody(request);
           searchHandler(request, response);
+        });
+        server.middlewares.use("/api/assistant", async (request, response) => {
+          request.body = await parseJsonBody(request);
+          assistantHandler(request, response);
         });
       },
     },

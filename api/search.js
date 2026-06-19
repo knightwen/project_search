@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createSearchResponse, isPasswordValid } from "./search-core.js";
+import { getEnvValue } from "./env.js";
 
 const DATA_PATH = path.join(process.cwd(), "data_private", "project-data.json");
 
 let cachedPayload;
-let cachedLocalPassword;
 
 function loadPayload() {
   if (!cachedPayload) {
@@ -21,29 +21,13 @@ function sendJson(response, statusCode, body) {
   response.end(JSON.stringify(body));
 }
 
-function readLocalPassword() {
-  if (cachedLocalPassword !== undefined) {
-    return cachedLocalPassword;
-  }
-
-  const envPath = path.join(process.cwd(), ".env.local");
-  try {
-    const envText = fs.readFileSync(envPath, "utf8");
-    const match = envText.match(/^SEARCH_PASSWORD=(.*)$/m);
-    cachedLocalPassword = match ? match[1].trim().replace(/^["']|["']$/g, "") : "";
-  } catch {
-    cachedLocalPassword = "";
-  }
-  return cachedLocalPassword;
-}
-
 export default function handler(request, response) {
   if (request.method !== "POST") {
     sendJson(response, 405, { error: "Method not allowed" });
     return;
   }
 
-  const expectedPassword = process.env.SEARCH_PASSWORD || readLocalPassword();
+  const expectedPassword = getEnvValue("SEARCH_PASSWORD");
   if (!isPasswordValid(request.body?.password, expectedPassword)) {
     sendJson(response, 401, { error: "Incorrect password." });
     return;

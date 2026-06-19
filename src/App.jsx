@@ -9,6 +9,7 @@ import {
   Minimize2,
   RefreshCw,
   Search,
+  Send,
   SlidersHorizontal,
   X,
 } from "lucide-react";
@@ -128,6 +129,27 @@ async function searchApi({ password, filters = {}, page = 1, includeAll = false 
   return body;
 }
 
+async function assistantApi({ password, prompt, currentFilters = {}, rows = [], purpose = "classify" }) {
+  const response = await fetch("/api/assistant", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      password,
+      prompt,
+      currentFilters,
+      rows,
+      purpose,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || `Assistant request failed with ${response.status}`);
+  }
+  return body;
+}
+
 function LoginView({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -156,14 +178,15 @@ function LoginView({ onLogin }) {
           )}
         </div>
         <h1>
-          WML Structural Group Project
-          <span>Management System</span>
+          Project Showcase
+          <span>WML Structural Group</span>
         </h1>
-        <label htmlFor="password">Password</label>
         <div className="login-row">
           <input
             id="password"
             type="password"
+            aria-label="Password"
+            placeholder="Password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoFocus
@@ -336,6 +359,81 @@ function MapSearchOverlay({ filters, onChange, onSubmit, onClear }) {
         />
       </div>
     </form>
+  );
+}
+
+function activeFilterSummary(filters = {}) {
+  const entries = [
+    ["Keyword", filters.keywordText],
+    ["Project ID", filters.projectIdText],
+    ["Client", filters.clientText],
+    ["Manager", filters.managerText],
+    ["Start from", filters.startDateFrom],
+    ["Start to", filters.startDateTo],
+  ].filter(([, value]) => textValue(value));
+
+  if (!entries.length) {
+    return "No filters applied.";
+  }
+
+  return entries.map(([label, value]) => `${label}: ${value}`).join(" | ");
+}
+
+function AssistantPanel({ onSubmit, loading, response, error, resultCount }) {
+  const [prompt, setPrompt] = useState("");
+  const examples = [
+    "Find bridge inspection projects from the last 10 years",
+    "Summarize the current filtered results for a client presentation",
+    "Find facade inspection projects in Sydney and summarize them",
+  ];
+
+  function submit(event) {
+    event.preventDefault();
+    const nextPrompt = prompt.trim();
+    if (!nextPrompt || loading) {
+      return;
+    }
+    onSubmit(nextPrompt);
+  }
+
+  return (
+    <section className="assistant-panel" aria-label="AI Assistant">
+      <form className="assistant-form" onSubmit={submit}>
+        <div className="assistant-input-shell">
+          <h2>Start with a question</h2>
+          <textarea
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="For example: What bridge inspection projects have we completed in the last 10 years?"
+            rows={3}
+          />
+          <button type="submit" disabled={loading || !prompt.trim()} aria-label={loading ? "Working" : "Run assistant"}>
+            {loading ? <RefreshCw size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
+          </button>
+        </div>
+      </form>
+      <div className="assistant-suggestion-band">
+        <div className="assistant-examples" aria-label="Example assistant prompts">
+          {examples.map((example) => (
+            <button key={example} type="button" onClick={() => setPrompt(example)}>
+              {example}
+            </button>
+          ))}
+        </div>
+        <p>Answers are generated from project records. Review all AI-generated content before using it with clients.</p>
+      </div>
+      {error ? <p className="assistant-error">{error}</p> : null}
+      {response ? (
+        <div className="assistant-response">
+          <div className="assistant-response-meta">
+            <span>{response.intent.replaceAll("_", " ")}</span>
+            {typeof resultCount === "number" ? <span>{resultCount.toLocaleString()} matching projects</span> : null}
+          </div>
+          {response.filters ? <p className="assistant-filter-summary">{activeFilterSummary(response.filters)}</p> : null}
+          <div className="assistant-message">{response.message}</div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -691,24 +789,33 @@ export default function App() {
   const [projectIdText, setProjectIdText] = useState("");
   const [clientText, setClientText] = useState("");
   const [managerText, setManagerText] = useState("");
+  const [startDateFrom, setStartDateFrom] = useState("");
+  const [startDateTo, setStartDateTo] = useState("");
   const [submittedFilters, setSubmittedFilters] = useState({
     keywordText: "",
     projectIdText: "",
     clientText: "",
     managerText: "",
+    startDateFrom: "",
+    startDateTo: "",
   });
+  const [assistantResponse, setAssistantResponse] = useState(null);
+  const [assistantError, setAssistantError] = useState("");
+  const [assistantLoading, setAssistantLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [mapRows, setMapRows] = useState([]);
   const [selectedMapProject, setSelectedMapProject] = useState(null);
   const mapSectionRef = useRef(null);
 
-  const draftFilters = { keywordText, projectIdText, clientText, managerText };
+  const draftFilters = { keywordText, projectIdText, clientText, managerText, startDateFrom, startDateTo };
   const filters = submittedFilters;
   const searching = hasAnySearch(
     filters.keywordText,
     filters.projectIdText,
     filters.clientText,
     filters.managerText,
+    filters.startDateFrom,
+    filters.startDateTo,
   );
   const rows = payload?.results || [];
   const selectedMapProjectKey = selectedMapProject ? projectKey(selectedMapProject) : "";
@@ -768,6 +875,8 @@ export default function App() {
     filters.projectIdText,
     filters.clientText,
     filters.managerText,
+    filters.startDateFrom,
+    filters.startDateTo,
     page,
     searching,
   ]);
@@ -784,11 +893,15 @@ export default function App() {
     setProjectIdText("");
     setClientText("");
     setManagerText("");
+    setStartDateFrom("");
+    setStartDateTo("");
     setSubmittedFilters({
       keywordText: "",
       projectIdText: "",
       clientText: "",
       managerText: "",
+      startDateFrom: "",
+      startDateTo: "",
     });
     setSelectedMapProject(null);
     setPage(1);
@@ -807,8 +920,88 @@ export default function App() {
       projectIdText: setProjectIdText,
       clientText: setClientText,
       managerText: setManagerText,
+      startDateFrom: setStartDateFrom,
+      startDateTo: setStartDateTo,
     };
     setters[key]?.(value);
+  }
+
+  function applyFilters(nextFilters) {
+    const normalized = {
+      keywordText: textValue(nextFilters.keywordText),
+      projectIdText: textValue(nextFilters.projectIdText),
+      clientText: textValue(nextFilters.clientText),
+      managerText: textValue(nextFilters.managerText),
+      startDateFrom: textValue(nextFilters.startDateFrom),
+      startDateTo: textValue(nextFilters.startDateTo),
+    };
+    setKeywordText(normalized.keywordText);
+    setProjectIdText(normalized.projectIdText);
+    setClientText(normalized.clientText);
+    setManagerText(normalized.managerText);
+    setStartDateFrom(normalized.startDateFrom);
+    setStartDateTo(normalized.startDateTo);
+    setSubmittedFilters(normalized);
+    setSelectedMapProject(null);
+    setPage(1);
+    return normalized;
+  }
+
+  async function runAssistantPresentation(prompt, contextRows) {
+    return assistantApi({
+      password,
+      prompt,
+      currentFilters: filters,
+      rows: contextRows,
+      purpose: "presentation_only",
+    });
+  }
+
+  async function submitAssistant(prompt) {
+    setAssistantLoading(true);
+    setAssistantError("");
+    setAssistantResponse(null);
+    try {
+      const contextRows = searching ? mapRows : rows;
+      const response = await assistantApi({
+        password,
+        prompt,
+        currentFilters: filters,
+        rows: contextRows,
+      });
+
+      if (response.intent === "presentation") {
+        setAssistantResponse(response);
+        return;
+      }
+
+      const nextFilters = applyFilters(response.filters || {});
+      const searchPayload = await searchApi({ password, filters: nextFilters, page: 1, includeAll: true });
+      setMapRows(searchPayload.results || []);
+
+      if (response.intent === "search_then_present") {
+        const presentation = await runAssistantPresentation(
+          response.presentationInstruction || response.message,
+          searchPayload.results || [],
+        );
+        setAssistantResponse({
+          ...presentation,
+          intent: "search_then_present",
+          filters: nextFilters,
+        });
+        return;
+      }
+
+      setAssistantResponse({
+        ...response,
+        filters: nextFilters,
+        message: `${response.message} Found ${(searchPayload.total || 0).toLocaleString()} matching projects.`,
+      });
+    } catch (error) {
+      setAssistantError(error.message);
+    } finally {
+      setAssistantLoading(false);
+    }
   }
 
   function selectProjectFromList(row) {
@@ -822,7 +1015,9 @@ export default function App() {
       const columns = visibleColumns(exportPayload.results, DISPLAY_COLUMNS);
       const csv = rowsToCsv(exportPayload.results, columns);
       const fileName = safeDownloadName(
-        [keywordText, projectIdText, clientText, managerText].filter((value) => value.trim()).join(" "),
+        [keywordText, projectIdText, clientText, managerText, startDateFrom, startDateTo]
+          .filter((value) => value.trim())
+          .join(" "),
       );
       downloadText(fileName, csv, "text/csv;charset=utf-8");
     } catch (error) {
@@ -914,6 +1109,13 @@ export default function App() {
             onSearchClear={clearSearch}
             panelRef={mapSectionRef}
           />
+          <AssistantPanel
+            onSubmit={submitAssistant}
+            loading={assistantLoading}
+            response={assistantResponse}
+            error={assistantError}
+            resultCount={payload?.total}
+          />
           {total > 0 ? (
             <div className="mobile-result-summary">
               <div className="mobile-result-text">
@@ -970,6 +1172,13 @@ export default function App() {
             onSearchSubmit={submitSearch}
             onSearchClear={clearSearch}
             panelRef={mapSectionRef}
+          />
+          <AssistantPanel
+            onSubmit={submitAssistant}
+            loading={assistantLoading}
+            response={assistantResponse}
+            error={assistantError}
+            resultCount={payload?.total}
           />
           <PreviewTable rows={rows} />
         </section>

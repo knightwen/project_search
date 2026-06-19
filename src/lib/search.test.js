@@ -60,6 +60,27 @@ describe("search helpers", () => {
     assert.equal(result[0]["Project ID"], "8443");
   });
 
+  it("filters by inclusive Start Date bounds", () => {
+    const rows = [
+      { "Project ID": "1000", "Project Name": "Old bridge inspection", "Start Date": "2014-05-01" },
+      { "Project ID": "1100", "Project Name": "Boundary bridge inspection", "Start Date": "2016-06-19" },
+      { "Project ID": "1200", "Project Name": "Recent bridge inspection", "Start Date": "2021-03-15" },
+      { "Project ID": "1300", "Project Name": "Future bridge inspection", "Start Date": "2027-01-01" },
+      { "Project ID": "1400", "Project Name": "Undated bridge inspection", "Start Date": "" },
+    ];
+
+    const result = filterProjects(rows, {
+      keywordText: "bridge inspection",
+      startDateFrom: "2016-06-19",
+      startDateTo: "2026-06-19",
+    });
+
+    assert.deepEqual(
+      result.map((row) => row["Project ID"]),
+      ["1100", "1200"],
+    );
+  });
+
   it("treats keyword all as a request for every project", () => {
     const rows = [
       { "Project ID": "8443", "Project Name": "Treendale retaining wall" },
