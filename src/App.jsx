@@ -501,7 +501,7 @@ function AssistantPanel({
         style={{ height: `${historyHeight}px` }}
       >
         {!history.length && !loading ? (
-          <p className="assistant-empty-history">Ask AI Assistant to search or summarize project information.</p>
+          <p className="assistant-empty-history">Conversation History</p>
         ) : null}
         {history.map((entry) => (
           <article className="assistant-history-entry" key={entry.id}>
