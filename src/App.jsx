@@ -31,6 +31,7 @@ import {
 
 const PASSWORD_KEY = "project-search-password";
 const PAGE_SIZE = 20;
+const DEFAULT_ASSISTANT_HISTORY_HEIGHT = 230;
 const PREVIEW_COLUMNS = [
   "Project ID",
   "Project Name",
@@ -129,7 +130,14 @@ async function searchApi({ password, filters = {}, page = 1, includeAll = false 
   return body;
 }
 
-async function assistantApi({ password, prompt, currentFilters = {}, rows = [], purpose = "classify" }) {
+async function assistantApi({
+  password,
+  prompt,
+  currentFilters = {},
+  rows = [],
+  conversationHistory = [],
+  purpose = "classify",
+}) {
   const response = await fetch("/api/assistant", {
     method: "POST",
     headers: {
@@ -140,6 +148,7 @@ async function assistantApi({ password, prompt, currentFilters = {}, rows = [], 
       prompt,
       currentFilters,
       rows,
+      conversationHistory,
       purpose,
     }),
   });
@@ -379,13 +388,54 @@ function activeFilterSummary(filters = {}) {
   return entries.map(([label, value]) => `${label}: ${value}`).join(" | ");
 }
 
-function AssistantPanel({ onSubmit, loading, response, error, resultCount }) {
+function AssistantPanel({
+  onSubmit,
+  onClear,
+  loading,
+  history,
+  pendingPrompt,
+  error,
+  resultCount,
+  historyHeight,
+  onHistoryResize,
+}) {
   const [prompt, setPrompt] = useState("");
-  const examples = [
-    "Find bridge inspection projects from the last 10 years",
-    "Summarize the current filtered results for a client presentation",
-    "Find facade inspection projects in Sydney and summarize them",
-  ];
+  const historyRef = useRef(null);
+  const lastHistoryHeightRef = useRef(historyHeight);
+  const canSubmit = Boolean(prompt.trim()) && !loading;
+  const canClear = Boolean(prompt.trim() || history.length || error || pendingPrompt) && !loading;
+
+  useEffect(() => {
+    lastHistoryHeightRef.current = historyHeight;
+  }, [historyHeight]);
+
+  useEffect(() => {
+    const node = historyRef.current;
+    if (!node || typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(([entry]) => {
+      const nextHeight = Math.round(entry.contentRect.height);
+      if (!Number.isFinite(nextHeight) || nextHeight < 120) {
+        return;
+      }
+      if (Math.abs(nextHeight - lastHistoryHeightRef.current) <= 1) {
+        return;
+      }
+      lastHistoryHeightRef.current = nextHeight;
+      onHistoryResize(nextHeight);
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [onHistoryResize]);
+
+  useEffect(() => {
+    if (historyRef.current) {
+      historyRef.current.scrollTop = historyRef.current.scrollHeight;
+    }
+  }, [history.length, loading]);
 
   function submit(event) {
     event.preventDefault();
@@ -394,45 +444,98 @@ function AssistantPanel({ onSubmit, loading, response, error, resultCount }) {
       return;
     }
     onSubmit(nextPrompt);
+    setPrompt("");
+  }
+
+  function handlePromptKeyDown(event) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    submit(event);
+  }
+
+  function clearAssistant() {
+    setPrompt("");
+    onClear();
   }
 
   return (
     <section className="assistant-panel" aria-label="AI Assistant">
       <form className="assistant-form" onSubmit={submit}>
         <div className="assistant-input-shell">
-          <h2>Start with a question</h2>
+          <h2>AI Assistant</h2>
           <textarea
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder="For example: What bridge inspection projects have we completed in the last 10 years?"
-            rows={3}
+            onKeyDown={handlePromptKeyDown}
+            placeholder="Ask AI about projects..."
+            rows={2}
           />
-          <button type="submit" disabled={loading || !prompt.trim()} aria-label={loading ? "Working" : "Run assistant"}>
+          <button
+            className={`assistant-send-button ${loading ? "loading" : canSubmit ? "ready" : "idle"}`}
+            type="submit"
+            disabled={!canSubmit}
+            aria-label={loading ? "Working" : "Run assistant"}
+          >
             {loading ? <RefreshCw size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
+          </button>
+          <button
+            className="assistant-clear-button"
+            type="button"
+            onClick={clearAssistant}
+            disabled={!canClear}
+            aria-label="Clear AI history"
+            title="Clear AI history"
+          >
+            <X size={12} aria-hidden="true" />
+            <span>Clear</span>
           </button>
         </div>
       </form>
-      <div className="assistant-suggestion-band">
-        <div className="assistant-examples" aria-label="Example assistant prompts">
-          {examples.map((example) => (
-            <button key={example} type="button" onClick={() => setPrompt(example)}>
-              {example}
-            </button>
-          ))}
-        </div>
-        <p>Answers are generated from project records. Review all AI-generated content before using it with clients.</p>
-      </div>
       {error ? <p className="assistant-error">{error}</p> : null}
-      {response ? (
-        <div className="assistant-response">
-          <div className="assistant-response-meta">
-            <span>{response.intent.replaceAll("_", " ")}</span>
-            {typeof resultCount === "number" ? <span>{resultCount.toLocaleString()} matching projects</span> : null}
-          </div>
-          {response.filters ? <p className="assistant-filter-summary">{activeFilterSummary(response.filters)}</p> : null}
-          <div className="assistant-message">{response.message}</div>
-        </div>
-      ) : null}
+      <div
+        className="assistant-history"
+        aria-label="AI conversation history"
+        ref={historyRef}
+        style={{ height: `${historyHeight}px` }}
+      >
+        {!history.length && !loading ? (
+          <p className="assistant-empty-history">Ask AI Assistant to search or summarize project information.</p>
+        ) : null}
+        {history.map((entry) => (
+          <article className="assistant-history-entry" key={entry.id}>
+            <div className="assistant-user-message">{entry.prompt}</div>
+            <div className="assistant-response">
+              <div className="assistant-response-meta">
+                <span>{entry.response.intent.replaceAll("_", " ")}</span>
+                {typeof entry.resultCount === "number" ? (
+                  <span>{entry.resultCount.toLocaleString()} matching projects</span>
+                ) : null}
+              </div>
+              {entry.response.filters ? (
+                <p className="assistant-filter-summary">{activeFilterSummary(entry.response.filters)}</p>
+              ) : null}
+              <div className="assistant-message">{entry.response.message}</div>
+            </div>
+          </article>
+        ))}
+        {loading ? (
+          <article className="assistant-history-entry pending">
+            <div className="assistant-user-message">{pendingPrompt}</div>
+            <div className="assistant-response">
+              <div className="assistant-response-meta">
+                <span>working</span>
+                {typeof resultCount === "number" ? <span>{resultCount.toLocaleString()} matching projects</span> : null}
+              </div>
+              <div className="assistant-message">Preparing a response...</div>
+            </div>
+          </article>
+        ) : null}
+      </div>
+      <p className="assistant-review-note">
+        Review AI-generated content before using it with clients.
+      </p>
     </section>
   );
 }
@@ -799,9 +902,11 @@ export default function App() {
     startDateFrom: "",
     startDateTo: "",
   });
-  const [assistantResponse, setAssistantResponse] = useState(null);
+  const [assistantHistory, setAssistantHistory] = useState([]);
   const [assistantError, setAssistantError] = useState("");
   const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantPendingPrompt, setAssistantPendingPrompt] = useState("");
+  const [assistantHistoryHeight, setAssistantHistoryHeight] = useState(DEFAULT_ASSISTANT_HISTORY_HEIGHT);
   const [page, setPage] = useState(1);
   const [mapRows, setMapRows] = useState([]);
   const [selectedMapProject, setSelectedMapProject] = useState(null);
@@ -947,20 +1052,47 @@ export default function App() {
     return normalized;
   }
 
-  async function runAssistantPresentation(prompt, contextRows) {
+  async function runAssistantAnalysis(prompt, contextRows, contextFilters = filters) {
     return assistantApi({
       password,
       prompt,
-      currentFilters: filters,
+      currentFilters: contextFilters,
       rows: contextRows,
-      purpose: "presentation_only",
+      conversationHistory: assistantCaseMemory(),
+      purpose: "analyze_results",
     });
+  }
+
+  function assistantCaseMemory() {
+    return assistantHistory.flatMap((entry) => [
+      { role: "user", content: entry.prompt },
+      { role: "assistant", content: entry.response?.message },
+    ]);
+  }
+
+  function appendAssistantHistory(promptText, response, resultCount) {
+    setAssistantHistory((history) => [
+      ...history,
+      {
+        id: `${Date.now()}-${history.length}`,
+        prompt: promptText,
+        response,
+        resultCount,
+      },
+    ]);
+  }
+
+  function clearAssistantHistory() {
+    setAssistantHistory([]);
+    setAssistantError("");
+    setAssistantPendingPrompt("");
+    setAssistantHistoryHeight(DEFAULT_ASSISTANT_HISTORY_HEIGHT);
   }
 
   async function submitAssistant(prompt) {
     setAssistantLoading(true);
+    setAssistantPendingPrompt(prompt);
     setAssistantError("");
-    setAssistantResponse(null);
     try {
       const contextRows = searching ? mapRows : rows;
       const response = await assistantApi({
@@ -968,10 +1100,43 @@ export default function App() {
         prompt,
         currentFilters: filters,
         rows: contextRows,
+        conversationHistory: assistantCaseMemory(),
       });
 
-      if (response.intent === "presentation") {
-        setAssistantResponse(response);
+      if (response.intent === "needs_clarification") {
+        appendAssistantHistory(
+          prompt,
+          {
+            ...response,
+            message: response.clarificationQuestion || response.message,
+          },
+          payload?.total,
+        );
+        return;
+      }
+
+      if (response.intent === "analyze_current_results") {
+        if (!contextRows.length) {
+          appendAssistantHistory(
+            prompt,
+            {
+              intent: "needs_clarification",
+              message: "Please search for a project type first, or include the project type you want summarized.",
+            },
+            0,
+          );
+          return;
+        }
+
+        const analysis = await runAssistantAnalysis(prompt, contextRows, filters);
+        appendAssistantHistory(
+          prompt,
+          {
+            ...analysis,
+            intent: "analyze_current_results",
+          },
+          contextRows.length,
+        );
         return;
       }
 
@@ -979,28 +1144,33 @@ export default function App() {
       const searchPayload = await searchApi({ password, filters: nextFilters, page: 1, includeAll: true });
       setMapRows(searchPayload.results || []);
 
-      if (response.intent === "search_then_present") {
-        const presentation = await runAssistantPresentation(
-          response.presentationInstruction || response.message,
+      if (response.intent === "search_then_analyze") {
+        const analysis = await runAssistantAnalysis(
+          response.analysisInstruction || response.message,
           searchPayload.results || [],
+          nextFilters,
         );
-        setAssistantResponse({
-          ...presentation,
-          intent: "search_then_present",
+        const analysisResponse = {
+          ...analysis,
+          intent: "search_then_analyze",
           filters: nextFilters,
-        });
+        };
+        appendAssistantHistory(prompt, analysisResponse, searchPayload.total);
         return;
       }
 
-      setAssistantResponse({
+      const searchResponse = {
         ...response,
+        intent: "search_only",
         filters: nextFilters,
         message: `${response.message} Found ${(searchPayload.total || 0).toLocaleString()} matching projects.`,
-      });
+      };
+      appendAssistantHistory(prompt, searchResponse, searchPayload.total);
     } catch (error) {
       setAssistantError(error.message);
     } finally {
       setAssistantLoading(false);
+      setAssistantPendingPrompt("");
     }
   }
 
@@ -1111,10 +1281,14 @@ export default function App() {
           />
           <AssistantPanel
             onSubmit={submitAssistant}
+            onClear={clearAssistantHistory}
             loading={assistantLoading}
-            response={assistantResponse}
+            history={assistantHistory}
+            pendingPrompt={assistantPendingPrompt}
             error={assistantError}
             resultCount={payload?.total}
+            historyHeight={assistantHistoryHeight}
+            onHistoryResize={setAssistantHistoryHeight}
           />
           {total > 0 ? (
             <div className="mobile-result-summary">
@@ -1175,10 +1349,14 @@ export default function App() {
           />
           <AssistantPanel
             onSubmit={submitAssistant}
+            onClear={clearAssistantHistory}
             loading={assistantLoading}
-            response={assistantResponse}
+            history={assistantHistory}
+            pendingPrompt={assistantPendingPrompt}
             error={assistantError}
             resultCount={payload?.total}
+            historyHeight={assistantHistoryHeight}
+            onHistoryResize={setAssistantHistoryHeight}
           />
           <PreviewTable rows={rows} />
         </section>

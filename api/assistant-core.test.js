@@ -10,7 +10,7 @@ import {
 describe("assistant core", () => {
   it("normalizes search intent filters returned by DeepSeek", () => {
     const payload = normalizeAssistantPayload({
-      intent: "search",
+      intent: "search_only",
       filters: {
         keywordText: "bridge inspection",
         clientText: "  Brookfield ",
@@ -22,7 +22,7 @@ describe("assistant core", () => {
     });
 
     assert.deepEqual(payload, {
-      intent: "search",
+      intent: "search_only",
       filters: {
         keywordText: "bridge inspection",
         projectIdText: "",
@@ -37,26 +37,26 @@ describe("assistant core", () => {
 
   it("normalizes presentation intent text without filters", () => {
     const payload = normalizeAssistantPayload({
-      intent: "presentation",
+      intent: "analyze_current_results",
       message: "These projects demonstrate relevant bridge inspection experience.",
     });
 
-    assert.equal(payload.intent, "presentation");
+    assert.equal(payload.intent, "analyze_current_results");
     assert.equal(payload.message, "These projects demonstrate relevant bridge inspection experience.");
     assert.equal(payload.filters, undefined);
   });
 
-  it("normalizes search then present intent with presentation instruction", () => {
+  it("normalizes search then analyze intent with analysis instruction", () => {
     const payload = normalizeAssistantPayload({
-      intent: "search_then_present",
+      intent: "search_then_analyze",
       filters: { keywordText: "facade inspection" },
       message: "Searching first, then preparing a client summary.",
-      presentationInstruction: "Summarize the matching projects for a client meeting.",
+      analysisInstruction: "Summarize the matching projects for a client meeting.",
     });
 
-    assert.equal(payload.intent, "search_then_present");
+    assert.equal(payload.intent, "search_then_analyze");
     assert.equal(payload.filters.keywordText, "facade inspection");
-    assert.equal(payload.presentationInstruction, "Summarize the matching projects for a client meeting.");
+    assert.equal(payload.analysisInstruction, "Summarize the matching projects for a client meeting.");
   });
 
   it("summarizes rows using presentation-relevant fields", () => {
@@ -85,6 +85,38 @@ describe("assistant core", () => {
         "Key Words": "",
         City: "",
         "Project Address": "",
+        InternalNotes: "not included",
+      },
+    ]);
+  });
+
+  it("keeps all project fields available for AI project summaries", () => {
+    const rows = [
+      {
+        "Project ID": "1200",
+        "Project Name": "Bridge inspection",
+        "Project Profile": "Inspection and reporting",
+        Description: "Detailed bridge inspection and reporting.",
+        "Contract Amount": "$25,000",
+        "Source File": "projects.csv",
+      },
+    ];
+
+    assert.deepEqual(summarizeRowsForAssistant(rows), [
+      {
+        "Project ID": "1200",
+        "Project Name": "Bridge inspection",
+        Client: "",
+        Manager: "",
+        "Start Date": "",
+        "Industry/Sector": "",
+        "Project Profile": "Inspection and reporting",
+        Description: "Detailed bridge inspection and reporting.",
+        "Key Words": "",
+        City: "",
+        "Project Address": "",
+        "Contract Amount": "$25,000",
+        "Source File": "projects.csv",
       },
     ]);
   });
@@ -99,9 +131,61 @@ describe("assistant core", () => {
 
     assert.equal(messages[0].role, "system");
     assert.match(messages[0].content, /json/i);
-    assert.match(messages[0].content, /search_then_present/);
+    assert.match(messages[0].content, /search_then_analyze/);
     assert.equal(messages[1].role, "user");
     assert.match(messages[1].content, /2026-06-19/);
+  });
+
+  it("routes first-step summarize requests with search terms to search then analyze", () => {
+    const messages = buildAssistantMessages({
+      prompt: "Summarize all retaining wall projects",
+      currentDate: "2026-06-19",
+      currentFilters: {},
+      rows: [],
+    });
+
+    assert.match(messages[0].content, /search_then_analyze/);
+    assert.match(messages[0].content, /summarize all retaining wall projects/i);
+    assert.match(messages[0].content, /analysisInstruction/);
+    assert.match(messages[0].content, /needs_clarification/);
+  });
+
+  it("frames presentation requests as project information summaries, not current results summaries", () => {
+    const messages = buildAssistantMessages({
+      prompt: "Summarize current results",
+      currentDate: "2026-06-19",
+      currentFilters: {},
+      rows: [],
+      purpose: "analyze_results",
+    });
+
+    assert.doesNotMatch(messages[0].content, /current results/i);
+    assert.match(messages[0].content, /project information/i);
+    assert.match(messages[0].content, /Project Profile/);
+    assert.match(messages[0].content, /Description/);
+  });
+
+  it("includes recent case conversation history in the DeepSeek prompt", () => {
+    const messages = buildAssistantMessages({
+      prompt: "Make it shorter",
+      currentDate: "2026-06-19",
+      currentFilters: { keywordText: "retaining wall" },
+      rows: [],
+      conversationHistory: [
+        {
+          role: "user",
+          content: "Summarize all retaining wall projects",
+        },
+        {
+          role: "assistant",
+          content: "WML has completed retaining wall assessment and certification projects.",
+        },
+      ],
+    });
+
+    assert.match(messages[1].content, /"conversationHistory"/);
+    assert.match(messages[1].content, /Summarize all retaining wall projects/);
+    assert.match(messages[1].content, /retaining wall assessment/);
   });
 
   it("describes DeepSeek certificate failures with the underlying cause", () => {

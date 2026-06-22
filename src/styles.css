@@ -371,6 +371,7 @@ button:disabled:hover {
 
 .assistant-panel {
   display: grid;
+  grid-template-rows: auto auto auto;
   width: 100%;
   margin: 14px 0 16px;
   overflow: hidden;
@@ -386,29 +387,58 @@ button:disabled:hover {
 
 .assistant-input-shell {
   position: relative;
-  min-height: 170px;
-  padding: 24px 88px 24px 24px;
+  height: 104px;
+  padding: 20px 82px 14px 24px;
   background: #ffffff;
 }
 
 .assistant-input-shell h2 {
-  margin: 0 0 14px;
+  margin: 0 0 8px;
   color: #485568;
-  font-size: 0.96rem;
-  font-weight: 700;
+  font-size: 0.98rem;
+  font-weight: 800;
   line-height: 1.2;
+}
+
+.assistant-clear-button {
+  position: absolute;
+  right: 20px;
+  top: calc(50% + 28px);
+  min-height: 22px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #475569;
+  background: #eef4fb;
+  border-color: #dbe4ee;
+  font-size: 0.68rem;
+  font-weight: 800;
+  gap: 3px;
+}
+
+.assistant-clear-button:hover,
+.assistant-clear-button:focus-visible {
+  color: #1f2937;
+  background: #e2eaf5;
+  border-color: #cbd7e6;
+}
+
+.assistant-clear-button:disabled,
+.assistant-clear-button:disabled:hover {
+  color: #a7b0bf;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
 }
 
 .assistant-form textarea {
   width: 100%;
-  min-height: 74px;
+  height: 38px;
   padding: 0;
   resize: none;
   border: 0;
   outline: 0;
   font: inherit;
   font-size: 1rem;
-  line-height: 1.6;
+  line-height: 1.35;
   color: #172033;
   background: transparent;
 }
@@ -417,79 +447,117 @@ button:disabled:hover {
   color: #8995a5;
 }
 
-.assistant-input-shell button {
+.assistant-send-button {
   position: absolute;
   right: 24px;
   top: 50%;
   display: inline-grid;
   place-items: center;
-  width: 48px;
-  min-width: 48px;
-  min-height: 48px;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   border-radius: 999px;
   color: #ffffff;
-  background: #9fa3a9;
+  background: #b9bec7;
   transform: translateY(-50%);
   box-shadow: none;
+  transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 
-.assistant-input-shell button:hover,
-.assistant-input-shell button:focus-visible {
+.assistant-send-button.ready {
+  background: #1f6feb;
+  box-shadow: 0 8px 18px rgba(31, 111, 235, 0.22);
+}
+
+.assistant-send-button.loading {
+  background: #f59e0b;
+  box-shadow: 0 8px 18px rgba(245, 158, 11, 0.22);
+}
+
+.assistant-send-button.ready:hover,
+.assistant-send-button.ready:focus-visible {
   color: #ffffff;
-  background: #6f7782;
+  background: #1958bd;
+  transform: translateY(-50%) scale(1.03);
 }
 
-.assistant-input-shell button:disabled {
+.assistant-send-button.loading svg {
+  animation: spin 1s linear infinite;
+}
+
+.assistant-send-button:disabled {
   color: #ffffff;
   background: #c1c6ce;
   cursor: not-allowed;
 }
 
-.assistant-suggestion-band {
-  display: grid;
-  gap: 10px;
-  padding: 18px 20px 14px;
-  border-top: 1px solid #d9dee7;
-  background: #eef3f8;
+.assistant-send-button.loading:disabled {
+  background: #f59e0b;
+  cursor: wait;
 }
 
-.assistant-suggestion-band p {
+.assistant-history {
+  position: relative;
+  height: 230px;
+  min-height: 120px;
+  max-height: min(70vh, 620px);
+  padding: 14px;
+  border-top: 1px solid #d9dee7;
+  background: #f4f7fb;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  resize: vertical;
+}
+
+.assistant-empty-history,
+.assistant-review-note {
   margin: 0;
   color: #6b7685;
   font-size: 0.8rem;
   text-align: center;
 }
 
-.assistant-examples {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.assistant-examples button {
-  min-height: 38px;
-  padding: 7px 14px;
-  border: 1px solid #d7dde6;
-  border-radius: 999px;
-  color: #111827;
+.assistant-review-note {
+  padding: 8px 14px 10px;
+  border-top: 1px solid #e4eaf3;
   background: #ffffff;
-  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.04);
-  font-size: 0.88rem;
-  font-weight: 700;
 }
 
 .assistant-response {
   display: grid;
   gap: 8px;
-  margin: 14px;
+  margin: 0;
   padding: 14px;
   border: 1px solid #dbe4ee;
   border-radius: 14px;
   background: #fbfcfe;
+}
+
+.assistant-history-entry {
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-history-entry + .assistant-history-entry {
+  margin-top: 14px;
+}
+
+.assistant-history-entry.pending {
+  opacity: 0.82;
+}
+
+.assistant-user-message {
+  justify-self: end;
+  max-width: min(760px, 86%);
+  padding: 9px 12px;
+  border-radius: 14px 14px 4px 14px;
+  color: #ffffff;
+  background: #334155;
+  font-size: 0.88rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .assistant-response-meta {
@@ -521,9 +589,15 @@ button:disabled:hover {
 }
 
 .assistant-error {
-  margin: 12px 14px 0;
+  margin: 10px 14px 0;
   color: #b42318;
   font-size: 0.9rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mobile-filter-toggle,
@@ -957,23 +1031,29 @@ td {
   }
 
   .assistant-input-shell {
-    min-height: 156px;
-    padding: 20px 72px 20px 20px;
+    height: 98px;
+    padding: 18px 68px 12px 20px;
   }
 
-  .assistant-input-shell button {
+  .assistant-send-button {
     right: 18px;
-    width: 44px;
-    min-width: 44px;
-    min-height: 44px;
+    width: 42px;
+    min-width: 42px;
+    min-height: 42px;
   }
 
-  .assistant-suggestion-band {
-    padding: 14px 14px 12px;
+  .assistant-clear-button {
+    right: 14px;
+    top: calc(50% + 27px);
   }
 
-  .assistant-examples {
-    justify-content: flex-start;
+  .assistant-panel {
+    grid-template-rows: auto auto auto;
+  }
+
+  .assistant-history {
+    height: 210px;
+    min-height: 110px;
   }
 
   .map-search-actions {

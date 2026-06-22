@@ -74,6 +74,7 @@ export default async function handler(request, response) {
       currentDate: new Date().toISOString().slice(0, 10),
       currentFilters: request.body?.currentFilters || {},
       rows: request.body?.rows || [],
+      conversationHistory: request.body?.conversationHistory || [],
       purpose: request.body?.purpose || "classify",
     });
     const deepSeekPayload = await callDeepSeek({
