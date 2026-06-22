@@ -398,6 +398,7 @@ function AssistantPanel({
   resultCount,
   historyHeight,
   onHistoryResize,
+  className = "",
 }) {
   const [prompt, setPrompt] = useState("");
   const historyRef = useRef(null);
@@ -461,7 +462,7 @@ function AssistantPanel({
   }
 
   return (
-    <section className="assistant-panel" aria-label="AI Assistant">
+    <section className={`assistant-panel ${className}`.trim()} aria-label="AI Assistant">
       <form className="assistant-form" onSubmit={submit}>
         <div className="assistant-input-shell">
           <h2>AI Assistant</h2>
@@ -551,6 +552,7 @@ function ResultsMap({
   onSearchSubmit,
   onSearchClear,
   panelRef,
+  fullscreenAssistant,
 }) {
   const internalMapPanelRef = useRef(null);
   const mapPanelRef = panelRef || internalMapPanelRef;
@@ -730,7 +732,12 @@ function ResultsMap({
   }
 
   return (
-    <section className={`results-map-panel ${fullscreenFallback ? "fullscreen-fallback" : ""}`} ref={mapPanelRef}>
+    <section
+      className={`results-map-panel ${fullscreenFallback ? "fullscreen-fallback" : ""} ${
+        showFullscreenUi ? "show-fullscreen-ui" : ""
+      }`.trim()}
+      ref={mapPanelRef}
+    >
       <div className="map-stage">
         <MapSearchOverlay
           filters={filters}
@@ -738,6 +745,7 @@ function ResultsMap({
           onSubmit={onSearchSubmit}
           onClear={onSearchClear}
         />
+        {fullscreenAssistant ? <div className="map-assistant-overlay">{fullscreenAssistant}</div> : null}
         <button
           className="map-fullscreen-button"
           type="button"
@@ -934,6 +942,17 @@ export default function App() {
   const totalPages = payload?.totalPages || 1;
   const currentPage = payload?.page || page;
   const mappedResultCount = mapRows.filter((row) => getProjectCoordinates(row)).length;
+  const assistantPanelProps = {
+    onSubmit: submitAssistant,
+    onClear: clearAssistantHistory,
+    loading: assistantLoading,
+    history: assistantHistory,
+    pendingPrompt: assistantPendingPrompt,
+    error: assistantError,
+    resultCount: payload?.total,
+    historyHeight: assistantHistoryHeight,
+    onHistoryResize: setAssistantHistoryHeight,
+  };
 
   useEffect(() => {
     if (!authenticated || !password) {
@@ -1245,8 +1264,8 @@ export default function App() {
 
       {loadError ? <p className="error-banner">{loadError}</p> : null}
 
-      {searching ? (
-        <section className="results-section">
+      <section className="results-section">
+        {searching ? (
           <div className="section-heading">
             <h2>{total.toLocaleString()} matching projects</h2>
             {total > 0 ? (
@@ -1267,29 +1286,23 @@ export default function App() {
               </div>
             ) : null}
           </div>
-          <ResultsMap
-            rows={mapRows}
-            total={total}
-            totalLabel={`${total.toLocaleString()} matching results`}
-            selectedProjectKey={selectedMapProjectKey}
-            onProjectSelect={setSelectedMapProject}
-            filters={draftFilters}
-            onFilterChange={updateDraftFilter}
-            onSearchSubmit={submitSearch}
-            onSearchClear={clearSearch}
-            panelRef={mapSectionRef}
-          />
-          <AssistantPanel
-            onSubmit={submitAssistant}
-            onClear={clearAssistantHistory}
-            loading={assistantLoading}
-            history={assistantHistory}
-            pendingPrompt={assistantPendingPrompt}
-            error={assistantError}
-            resultCount={payload?.total}
-            historyHeight={assistantHistoryHeight}
-            onHistoryResize={setAssistantHistoryHeight}
-          />
+        ) : null}
+        <ResultsMap
+          rows={searching ? mapRows : []}
+          total={searching ? total : 0}
+          totalLabel={searching ? `${total.toLocaleString()} matching results` : "preview mode"}
+          selectedProjectKey={selectedMapProjectKey}
+          onProjectSelect={setSelectedMapProject}
+          filters={draftFilters}
+          onFilterChange={updateDraftFilter}
+          onSearchSubmit={submitSearch}
+          onSearchClear={clearSearch}
+          panelRef={mapSectionRef}
+          fullscreenAssistant={<AssistantPanel {...assistantPanelProps} className="assistant-panel-fullscreen" />}
+        />
+        <AssistantPanel {...assistantPanelProps} />
+        {searching ? (
+          <>
           {total > 0 ? (
             <div className="mobile-result-summary">
               <div className="mobile-result-text">
@@ -1332,35 +1345,11 @@ export default function App() {
               onPageChange={setPage}
             />
           ) : null}
-        </section>
-      ) : (
-        <section className="results-section">
-          <ResultsMap
-            rows={[]}
-            total={0}
-            totalLabel="preview mode"
-            selectedProjectKey={selectedMapProjectKey}
-            onProjectSelect={setSelectedMapProject}
-            filters={draftFilters}
-            onFilterChange={updateDraftFilter}
-            onSearchSubmit={submitSearch}
-            onSearchClear={clearSearch}
-            panelRef={mapSectionRef}
-          />
-          <AssistantPanel
-            onSubmit={submitAssistant}
-            onClear={clearAssistantHistory}
-            loading={assistantLoading}
-            history={assistantHistory}
-            pendingPrompt={assistantPendingPrompt}
-            error={assistantError}
-            resultCount={payload?.total}
-            historyHeight={assistantHistoryHeight}
-            onHistoryResize={setAssistantHistoryHeight}
-          />
+          </>
+        ) : (
           <PreviewTable rows={rows} />
-        </section>
-      )}
+        )}
+      </section>
       <footer className="site-footer">
         Developed by Graduate Engineer Wen Zhou, supervised by Steve Woodhouse and Jing Zhang
       </footer>
