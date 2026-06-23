@@ -136,6 +136,51 @@ describe("assistant core", () => {
     assert.match(messages[1].content, /2026-06-19/);
   });
 
+  it("sets the assistant identity and WML first-person analysis voice", () => {
+    const messages = buildAssistantMessages({
+      prompt: "Summarize retaining wall projects",
+      currentDate: "2026-06-19",
+      currentFilters: {},
+      rows: [],
+    });
+
+    assert.match(messages[0].content, /WML Project Search Assistant/);
+    assert.match(messages[0].content, /search, filter, understand, compare, and summarize/);
+    assert.match(messages[0].content, /WML has/);
+    assert.match(messages[0].content, /We have/);
+    assert.match(messages[0].content, /Our experience/);
+  });
+
+  it("allows multilingual answers based on the user's requested language", () => {
+    const messages = buildAssistantMessages({
+      prompt: "用中文总结 retaining wall projects",
+      currentDate: "2026-06-19",
+      currentFilters: {},
+      rows: [],
+    });
+
+    assert.doesNotMatch(messages[0].content, /English-only/);
+    assert.match(messages[0].content, /multilingual/i);
+    assert.match(messages[0].content, /requested language/i);
+    assert.match(messages[0].content, /same language/i);
+    assert.match(messages[0].content, /message/);
+    assert.match(messages[0].content, /clarificationQuestion/);
+  });
+
+  it("instructs DeepSeek to use OR filters and manager aliases for multi-manager searches", () => {
+    const messages = buildAssistantMessages({
+      prompt: "search stephen's and jing's jobs",
+      currentDate: "2026-06-19",
+      currentFilters: {},
+      rows: [],
+    });
+
+    assert.match(messages[0].content, / \| /);
+    assert.match(messages[0].content, /StephenWoodhouse/);
+    assert.match(messages[0].content, /Jing/);
+    assert.match(messages[0].content, /managerText/);
+  });
+
   it("routes first-step summarize requests with search terms to search then analyze", () => {
     const messages = buildAssistantMessages({
       prompt: "Summarize all retaining wall projects",
