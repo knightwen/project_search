@@ -96,6 +96,19 @@ export function containsTerms(text, searchText) {
   return terms.every((term) => haystack.includes(term));
 }
 
+export function containsFilterQuery(text, searchText) {
+  const alternatives = cleanValue(searchText)
+    .split("|")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!alternatives.length) {
+    return true;
+  }
+
+  return alternatives.some((alternative) => containsTerms(text, alternative));
+}
+
 export function textForColumns(row, columns) {
   return columns.map((column) => cleanValue(row[column])).join(" ");
 }
@@ -118,16 +131,16 @@ export function filterProjects(rows, filters) {
 
   return rows.filter((row) => {
     const normalized = normalizeProject(row);
-    if (cleanValue(keywordText) && !containsTerms(textForColumns(normalized, KEYWORD_COLUMNS), keywordText)) {
+    if (cleanValue(keywordText) && !containsFilterQuery(textForColumns(normalized, KEYWORD_COLUMNS), keywordText)) {
       return false;
     }
-    if (cleanValue(projectIdText) && !containsTerms(textForColumns(normalized, PROJECT_ID_COLUMNS), projectIdText)) {
+    if (cleanValue(projectIdText) && !containsFilterQuery(textForColumns(normalized, PROJECT_ID_COLUMNS), projectIdText)) {
       return false;
     }
-    if (cleanValue(clientText) && !containsTerms(textForColumns(normalized, CLIENT_COLUMNS), clientText)) {
+    if (cleanValue(clientText) && !containsFilterQuery(textForColumns(normalized, CLIENT_COLUMNS), clientText)) {
       return false;
     }
-    if (cleanValue(managerText) && !containsTerms(textForColumns(normalized, MANAGER_COLUMNS), managerText)) {
+    if (cleanValue(managerText) && !containsFilterQuery(textForColumns(normalized, MANAGER_COLUMNS), managerText)) {
       return false;
     }
     if (fromTime !== null || toTime !== null) {

@@ -60,6 +60,23 @@ describe("search helpers", () => {
     assert.equal(result[0]["Project ID"], "8443");
   });
 
+  it("supports OR terms in field filters with pipe separators", () => {
+    const rows = [
+      { "Project ID": "1000", "Project Name": "Bridge inspection", Manager: "StephenWoodhouse" },
+      { "Project ID": "1100", "Project Name": "Facade inspection", Manager: "Jing" },
+      { "Project ID": "1200", "Project Name": "Warehouse slab", Manager: "RobertJarman" },
+    ];
+
+    const result = filterProjects(rows, {
+      managerText: "StephenWoodhouse | Jing",
+    });
+
+    assert.deepEqual(
+      result.map((row) => row["Project ID"]),
+      ["1000", "1100"],
+    );
+  });
+
   it("filters by inclusive Start Date bounds", () => {
     const rows = [
       { "Project ID": "1000", "Project Name": "Old bridge inspection", "Start Date": "2014-05-01" },
