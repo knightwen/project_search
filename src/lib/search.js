@@ -183,6 +183,10 @@ export function safeDownloadName(searchText) {
   return `search_result_${safeText.slice(0, 80)}.csv`;
 }
 
+export function projectFolderPath(row) {
+  return cleanValue(row?.["Source Project Folder"]);
+}
+
 export function visibleColumns(rows, columns = DISPLAY_COLUMNS) {
   const available = new Set(rows.flatMap((row) => Object.keys(row)));
   return columns.filter((column) => available.has(column));

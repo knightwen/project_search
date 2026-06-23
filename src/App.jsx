@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import {
+  ChevronDown,
+  ChevronUp,
   Download,
   ExternalLink,
   FileDown,
+  FolderOpen,
   LogOut,
   Maximize2,
   Minimize2,
@@ -16,6 +19,7 @@ import {
 import {
   DISPLAY_COLUMNS,
   hasAnySearch,
+  projectFolderPath,
   safeDownloadName,
   visibleColumns,
 } from "./lib/search.js";
@@ -50,12 +54,28 @@ const MOBILE_RESULT_COLUMNS = [
   ["Project Profile", "Profile", "profile"],
   ["Description", "Description", "description"],
 ];
+const CAPITALIZED_DISPLAY_COLUMNS = new Set(["Industry/Sector", "Project Profile", "Description"]);
 
 function textValue(value) {
   if (value === null || value === undefined) {
     return "";
   }
   return String(value).trim();
+}
+
+function capitalizeFirstLetter(value) {
+  const text = textValue(value);
+  if (!text) {
+    return "";
+  }
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function displayValue(column, value) {
+  if (CAPITALIZED_DISPLAY_COLUMNS.has(column)) {
+    return capitalizeFirstLetter(value);
+  }
+  return textValue(value);
 }
 
 function escapeHtml(value) {
@@ -93,7 +113,7 @@ function projectPopupHtml(row, detailed = false) {
 
   const details = ["Client", "Manager", "Industry/Sector", "Project Profile"]
     .map((column) => {
-      const value = textValue(row[column]);
+      const value = displayValue(column, row[column]);
       if (!value) {
         return "";
       }
@@ -246,17 +266,60 @@ function ActionButton({ children, icon: Icon, className = "", ...props }) {
   );
 }
 
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
 function ProjectResult({ row, selected = false, onSelect }) {
   const projectId = textValue(row["Project ID"]) || "No Project ID";
   const projectName = textValue(row["Project Name"]) || projectLabel(row);
   const mapUrl = googleMapsUrl(row);
   const kml = projectKml(row);
+  const folderPath = projectFolderPath(row);
+  const [folderCopyStatus, setFolderCopyStatus] = useState("idle");
+  const folderCopyTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(folderCopyTimerRef.current);
+    };
+  }, []);
 
   function downloadKml() {
     if (!kml) {
       return;
     }
     downloadText(safeKmlName(row), kml, "application/vnd.google-earth.kml+xml;charset=utf-8");
+  }
+
+  async function copyFolderPath() {
+    if (!folderPath) {
+      return;
+    }
+
+    window.clearTimeout(folderCopyTimerRef.current);
+    try {
+      await copyTextToClipboard(folderPath);
+      setFolderCopyStatus("copied");
+    } catch (error) {
+      setFolderCopyStatus("failed");
+    }
+    folderCopyTimerRef.current = window.setTimeout(() => {
+      setFolderCopyStatus("idle");
+    }, 1600);
   }
 
   return (
@@ -267,10 +330,15 @@ function ProjectResult({ row, selected = false, onSelect }) {
             {projectId}
           </button>
           <span>- {projectName}</span>
+          {folderPath ? (
+            <ActionButton className="inline-folder-button" icon={FolderOpen} onClick={copyFolderPath} title={folderPath}>
+              {folderCopyStatus === "copied" ? "Copied" : folderCopyStatus === "failed" ? "Failed" : "Folder"}
+            </ActionButton>
+          ) : null}
         </h3>
         <dl>
           {["Client", "Manager", "Industry/Sector", "Project Profile", "Description"].map((column) => {
-            const value = textValue(row[column]);
+            const value = displayValue(column, row[column]);
             if (!value) {
               return null;
             }
@@ -408,8 +476,10 @@ function AssistantPanel({
   historyHeight,
   onHistoryResize,
   className = "",
+  collapsible = false,
 }) {
   const [prompt, setPrompt] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const historyRef = useRef(null);
   const lastHistoryHeightRef = useRef(historyHeight);
   const resizingHistoryRef = useRef(false);
@@ -489,8 +559,28 @@ function AssistantPanel({
     onClear();
   }
 
+  const CollapseIcon = collapsed ? ChevronDown : ChevronUp;
+
   return (
-    <section className={`assistant-panel ${className}`.trim()} aria-label="AI Assistant">
+    <section className={`assistant-panel ${collapsed ? "collapsed" : ""} ${className}`.trim()} aria-label="AI Assistant">
+      {collapsible ? (
+        <button
+          className="assistant-collapse-button"
+          type="button"
+          onClick={() => setCollapsed((value) => !value)}
+          aria-expanded={!collapsed}
+        >
+          <CollapseIcon size={16} aria-hidden="true" />
+          <span>{collapsed ? "Expand" : "Collapse"}</span>
+        </button>
+      ) : null}
+      {collapsed ? (
+        <div className="assistant-collapsed-bar">
+          <h2>AI Assistant</h2>
+          <p>{history.length ? `${history.length} conversation entries` : "Ready to help with project searches"}</p>
+        </div>
+      ) : (
+        <div className="assistant-content">
       <form className="assistant-form" onSubmit={submit}>
         <div className="assistant-input-shell">
           <h2>AI Assistant</h2>
@@ -568,6 +658,8 @@ function AssistantPanel({
       <p className="assistant-review-note">
         Review AI-generated content before using it with clients.
       </p>
+        </div>
+      )}
     </section>
   );
 }
@@ -819,7 +911,7 @@ function PreviewTable({ rows }) {
           {rows.slice(0, 20).map((row, index) => (
             <tr key={`${row["Project ID"] || "row"}-${index}`}>
               {columns.map((column) => (
-                <td key={column}>{textValue(row[column])}</td>
+                <td key={column}>{displayValue(column, row[column])}</td>
               ))}
             </tr>
           ))}
@@ -858,8 +950,9 @@ function MobileResultsTable({ rows, selectedProjectKey, onSelect }) {
                         {textValue(row[column]) || "No ID"}
                       </button>
                     ) : (
-                      <span className="mobile-cell-text" title={textValue(row[column])}>
-                        {textValue(row[column]) || (label === "Client" || label === "Manager" ? "Not specified" : "")}
+                      <span className="mobile-cell-text" title={displayValue(column, row[column])}>
+                        {displayValue(column, row[column]) ||
+                          (label === "Client" || label === "Manager" ? "Not specified" : "")}
                       </span>
                     )}
                   </td>
@@ -1351,7 +1444,7 @@ export default function App() {
           fullscreenAssistant={<AssistantPanel {...fullscreenAssistantPanelProps} className="assistant-panel-fullscreen" />}
           onFullscreenUiChange={handleMapFullscreenUiChange}
         />
-        <AssistantPanel {...assistantPanelProps} />
+        <AssistantPanel {...assistantPanelProps} collapsible />
         {searching ? (
           <>
           {total > 0 ? (

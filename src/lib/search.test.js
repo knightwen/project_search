@@ -5,6 +5,7 @@ import {
   filterProjects,
   isAllProjectsSearch,
   normalizeProject,
+  projectFolderPath,
   safeDownloadName,
 } from "./search.js";
 
@@ -115,5 +116,13 @@ describe("search helpers", () => {
       "search_result_wall_certification_treendale.csv",
     );
     assert.equal(safeDownloadName(""), "search_result_search.csv");
+  });
+
+  it("returns a trimmed source project folder path when present", () => {
+    assert.equal(
+      projectFolderPath({ "Source Project Folder": " J:\\JOBS\\13284 Goldmont Gland Tool Certification - Kal " }),
+      "J:\\JOBS\\13284 Goldmont Gland Tool Certification - Kal",
+    );
+    assert.equal(projectFolderPath({ "Source Project Folder": "   " }), "");
   });
 });

@@ -8,8 +8,10 @@ import pandas as pd
 FOLDER_PATH = "data_folder"
 OUTPUT_PATH = os.path.join("data_private", "project-data.json")
 SUPPORTED_EXTENSIONS = (".xlsx", ".xls", ".csv")
+PRIMARY_SOURCE_FILE = "6_project_locations_google_earth_1_1843_website_base.xlsx"
 LATITUDE_COLUMN = "Latitude"
 LONGITUDE_COLUMN = "Longitude"
+SOURCE_PROJECT_FOLDER_COLUMN = "Source Project Folder"
 
 
 def read_csv_with_fallback(file_path):
@@ -41,7 +43,13 @@ def normalize_project_columns(df):
     coalesce_columns(
         df,
         "Project Name",
-        ("Project Name", "Generated Project Name", "Original Project Display Name"),
+        (
+            "Project Name",
+            "Original Project Display Name No ID",
+            "Project ID",
+            "Generated Project Name",
+            "Original Project Display Name",
+        ),
     )
     coalesce_columns(df, "Client", ("Client", "Client Name", "Original Client"))
     coalesce_columns(df, LATITUDE_COLUMN, (LATITUDE_COLUMN, "Google Latitude"))
@@ -59,6 +67,26 @@ def coordinate_score(df):
     return (latitude.notna() & longitude.notna()).astype(int)
 
 
+def non_empty_text_series(df, column):
+    if column not in df.columns:
+        return pd.Series("", index=df.index)
+    return df[column].fillna("").astype(str).str.strip()
+
+
+def filter_blank_project_rows(df):
+    project_ids = non_empty_text_series(df, "Project ID")
+    project_names = non_empty_text_series(df, "Project Name")
+    return df.loc[(project_ids != "") | (project_names != "")].copy()
+
+
+def missing_source_folder_rows(records):
+    return [
+        record
+        for record in records
+        if not str(record.get(SOURCE_PROJECT_FOLDER_COLUMN, "")).strip()
+    ]
+
+
 def json_value(value):
     if pd.isna(value):
         return ""
@@ -71,9 +99,14 @@ def load_and_combine_data(folder):
     if not os.path.exists(folder):
         raise FileNotFoundError(f"Folder path '{folder}' was not found.")
 
-    file_names = [
+    all_file_names = [
         name for name in sorted(os.listdir(folder)) if name.lower().endswith(SUPPORTED_EXTENSIONS)
     ]
+    primary_source_name = next(
+        (name for name in all_file_names if name.lower() == PRIMARY_SOURCE_FILE.lower()),
+        None,
+    )
+    file_names = [primary_source_name] if primary_source_name else all_file_names
     if not file_names:
         raise FileNotFoundError(f"No Excel/CSV files were found in '{folder}'.")
 
@@ -90,8 +123,10 @@ def load_and_combine_data(folder):
     combined_df = pd.concat(frames, ignore_index=True)
     combined_df.columns = combined_df.columns.str.strip()
     combined_df = normalize_project_columns(combined_df)
+    combined_df = filter_blank_project_rows(combined_df)
 
-    if "Project ID" in combined_df.columns:
+    should_dedupe_by_project_id = [name.lower() for name in file_names] != [PRIMARY_SOURCE_FILE.lower()]
+    if should_dedupe_by_project_id and "Project ID" in combined_df.columns:
         combined_df["Project ID"] = combined_df["Project ID"].fillna("").astype(str).str.strip()
         combined_df["_coordinate_score"] = coordinate_score(combined_df)
         combined_df = (
@@ -109,6 +144,7 @@ def load_and_combine_data(folder):
 
 def main():
     file_names, records = load_and_combine_data(FOLDER_PATH)
+    missing_folders = missing_source_folder_rows(records)
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     payload = {
         "generatedAt": datetime.now().isoformat(timespec="seconds"),
@@ -121,6 +157,12 @@ def main():
         json.dump(payload, output_file, ensure_ascii=False, indent=2)
         output_file.write("\n")
     print(f"Wrote {len(records)} records to {OUTPUT_PATH}")
+    if missing_folders:
+        print(f"Warning: {len(missing_folders)} records are missing {SOURCE_PROJECT_FOLDER_COLUMN}:")
+        for record in missing_folders:
+            project_id = record.get("Project ID", "")
+            project_name = record.get("Project Name", "")
+            print(f"- {project_id}: {project_name}")
 
 
 if __name__ == "__main__":
