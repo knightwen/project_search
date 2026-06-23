@@ -32,6 +32,7 @@ import {
 const PASSWORD_KEY = "project-search-password";
 const PAGE_SIZE = 20;
 const DEFAULT_ASSISTANT_HISTORY_HEIGHT = 230;
+const DEFAULT_ASSISTANT_FULLSCREEN_HISTORY_HEIGHT = 420;
 const PREVIEW_COLUMNS = [
   "Project ID",
   "Project Name",
@@ -64,6 +65,14 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function defaultFullscreenAssistantHistoryHeight() {
+  if (typeof window === "undefined") {
+    return DEFAULT_ASSISTANT_FULLSCREEN_HISTORY_HEIGHT;
+  }
+  const maxAvailableHistoryHeight = window.innerHeight - 196;
+  return Math.round(Math.min(Math.max(window.innerHeight * 0.5, 260), maxAvailableHistoryHeight, 560));
 }
 
 function projectKey(row) {
@@ -403,6 +412,7 @@ function AssistantPanel({
   const [prompt, setPrompt] = useState("");
   const historyRef = useRef(null);
   const lastHistoryHeightRef = useRef(historyHeight);
+  const resizingHistoryRef = useRef(false);
   const canSubmit = Boolean(prompt.trim()) && !loading;
   const canClear = Boolean(prompt.trim() || history.length || error || pendingPrompt) && !loading;
 
@@ -417,6 +427,9 @@ function AssistantPanel({
     }
 
     const observer = new ResizeObserver(([entry]) => {
+      if (!resizingHistoryRef.current) {
+        return;
+      }
       const nextHeight = Math.round(entry.contentRect.height);
       if (!Number.isFinite(nextHeight) || nextHeight < 120) {
         return;
@@ -431,6 +444,21 @@ function AssistantPanel({
     observer.observe(node);
     return () => observer.disconnect();
   }, [onHistoryResize]);
+
+  useEffect(() => {
+    function stopResizingHistory() {
+      window.setTimeout(() => {
+        resizingHistoryRef.current = false;
+      }, 0);
+    }
+
+    window.addEventListener("pointerup", stopResizingHistory);
+    window.addEventListener("pointercancel", stopResizingHistory);
+    return () => {
+      window.removeEventListener("pointerup", stopResizingHistory);
+      window.removeEventListener("pointercancel", stopResizingHistory);
+    };
+  }, []);
 
   useEffect(() => {
     if (historyRef.current) {
@@ -500,6 +528,9 @@ function AssistantPanel({
         aria-label="AI conversation history"
         ref={historyRef}
         style={{ height: `${historyHeight}px` }}
+        onPointerDown={() => {
+          resizingHistoryRef.current = true;
+        }}
       >
         {!history.length && !loading ? (
           <p className="assistant-empty-history">Conversation History</p>
@@ -553,6 +584,7 @@ function ResultsMap({
   onSearchClear,
   panelRef,
   fullscreenAssistant,
+  onFullscreenUiChange,
 }) {
   const internalMapPanelRef = useRef(null);
   const mapPanelRef = panelRef || internalMapPanelRef;
@@ -692,6 +724,10 @@ function ResultsMap({
   useEffect(() => {
     refreshMapSize(mapRef.current);
   }, [mapSize, collapsed, showFullscreenUi]);
+
+  useEffect(() => {
+    onFullscreenUiChange?.(showFullscreenUi);
+  }, [onFullscreenUiChange, showFullscreenUi]);
 
   function enableScrollZoom() {
     mapRef.current?.scrollWheelZoom.enable();
@@ -915,6 +951,9 @@ export default function App() {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantPendingPrompt, setAssistantPendingPrompt] = useState("");
   const [assistantHistoryHeight, setAssistantHistoryHeight] = useState(DEFAULT_ASSISTANT_HISTORY_HEIGHT);
+  const [fullscreenAssistantHistoryHeight, setFullscreenAssistantHistoryHeight] = useState(
+    defaultFullscreenAssistantHistoryHeight,
+  );
   const [page, setPage] = useState(1);
   const [mapRows, setMapRows] = useState([]);
   const [selectedMapProject, setSelectedMapProject] = useState(null);
@@ -952,6 +991,16 @@ export default function App() {
     resultCount: payload?.total,
     historyHeight: assistantHistoryHeight,
     onHistoryResize: setAssistantHistoryHeight,
+  };
+  const fullscreenAssistantPanelProps = {
+    ...assistantPanelProps,
+    historyHeight: fullscreenAssistantHistoryHeight,
+    onHistoryResize: setFullscreenAssistantHistoryHeight,
+  };
+  const handleMapFullscreenUiChange = (isFullscreen) => {
+    if (isFullscreen) {
+      setFullscreenAssistantHistoryHeight(defaultFullscreenAssistantHistoryHeight());
+    }
   };
 
   useEffect(() => {
@@ -1106,6 +1155,7 @@ export default function App() {
     setAssistantError("");
     setAssistantPendingPrompt("");
     setAssistantHistoryHeight(DEFAULT_ASSISTANT_HISTORY_HEIGHT);
+    setFullscreenAssistantHistoryHeight(defaultFullscreenAssistantHistoryHeight());
   }
 
   async function submitAssistant(prompt) {
@@ -1298,7 +1348,8 @@ export default function App() {
           onSearchSubmit={submitSearch}
           onSearchClear={clearSearch}
           panelRef={mapSectionRef}
-          fullscreenAssistant={<AssistantPanel {...assistantPanelProps} className="assistant-panel-fullscreen" />}
+          fullscreenAssistant={<AssistantPanel {...fullscreenAssistantPanelProps} className="assistant-panel-fullscreen" />}
+          onFullscreenUiChange={handleMapFullscreenUiChange}
         />
         <AssistantPanel {...assistantPanelProps} />
         {searching ? (
@@ -1351,7 +1402,7 @@ export default function App() {
         )}
       </section>
       <footer className="site-footer">
-        Developed by Graduate Engineer Wen Zhou, supervised by Steve Woodhouse and Jing Zhang
+        Developed by Wen Zhou, supervised by Steve Woodhouse and Jing Zhang
       </footer>
     </main>
   );
