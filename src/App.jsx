@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import {
   ChevronDown,
@@ -35,6 +35,7 @@ import {
 
 const PASSWORD_KEY = "project-search-password";
 const PAGE_SIZE = 20;
+const MAX_ASSISTANT_CONTEXT_ROWS = 80;
 const DEFAULT_ASSISTANT_HISTORY_HEIGHT = 230;
 const DEFAULT_ASSISTANT_FULLSCREEN_HISTORY_HEIGHT = 420;
 const PREVIEW_COLUMNS = [
@@ -176,7 +177,8 @@ async function assistantApi({
       password,
       prompt,
       currentFilters,
-      rows,
+      rows: rows.slice(0, MAX_ASSISTANT_CONTEXT_ROWS),
+      resultCount: rows.length,
       conversationHistory,
       purpose,
     }),
@@ -380,8 +382,16 @@ function IconOnlyButton({ icon: Icon, label, className = "", ...props }) {
   );
 }
 
-function MapSearchOverlay({ filters, onChange, onSubmit, onClear }) {
+function MapSearchOverlay({ filters, onChange, onSubmit, onClear, onFiltersOpenChange }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  function toggleFiltersOpen() {
+    setFiltersOpen((value) => {
+      const nextValue = !value;
+      onFiltersOpenChange?.(nextValue);
+      return nextValue;
+    });
+  }
 
   return (
     <form className="map-search-overlay" onSubmit={onSubmit}>
@@ -420,7 +430,7 @@ function MapSearchOverlay({ filters, onChange, onSubmit, onClear }) {
             icon={SlidersHorizontal}
             label="Filters"
             className={`icon-only-button mobile-filter-toggle ${filtersOpen ? "active" : ""}`}
-            onClick={() => setFiltersOpen((value) => !value)}
+            onClick={toggleFiltersOpen}
           />
         </div>
       </div>
@@ -477,9 +487,11 @@ function AssistantPanel({
   onHistoryResize,
   className = "",
   collapsible = false,
+  defaultCollapsed = false,
+  compactCollapsed = false,
 }) {
   const [prompt, setPrompt] = useState("");
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const historyRef = useRef(null);
   const lastHistoryHeightRef = useRef(historyHeight);
   const resizingHistoryRef = useRef(false);
@@ -560,9 +572,15 @@ function AssistantPanel({
   }
 
   const CollapseIcon = collapsed ? ChevronDown : ChevronUp;
+  const collapseLabel = collapsed ? (compactCollapsed ? "AI" : "Expand") : "Collapse";
 
   return (
-    <section className={`assistant-panel ${collapsed ? "collapsed" : ""} ${className}`.trim()} aria-label="AI Assistant">
+    <section
+      className={`assistant-panel ${collapsed ? "collapsed" : ""} ${
+        compactCollapsed ? "compact-collapsed" : ""
+      } ${className}`.trim()}
+      aria-label="AI Assistant"
+    >
       {collapsible ? (
         <button
           className="assistant-collapse-button"
@@ -570,11 +588,11 @@ function AssistantPanel({
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
         >
-          <CollapseIcon size={16} aria-hidden="true" />
-          <span>{collapsed ? "Expand" : "Collapse"}</span>
+          {collapsed && compactCollapsed ? null : <CollapseIcon size={16} aria-hidden="true" />}
+          <span>{collapseLabel}</span>
         </button>
       ) : null}
-      {collapsed ? (
+      {collapsed && compactCollapsed ? null : collapsed ? (
         <div className="assistant-collapsed-bar">
           <h2>AI Assistant</h2>
           <p>{history.length ? `${history.length} conversation entries` : "Ready to help with project searches"}</p>
@@ -688,6 +706,8 @@ function ResultsMap({
   const [collapsed, setCollapsed] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [mobileFullscreenControls, setMobileFullscreenControls] = useState(false);
   const mappedRows = useMemo(
     () =>
       rows
@@ -821,6 +841,22 @@ function ResultsMap({
     onFullscreenUiChange?.(showFullscreenUi);
   }, [onFullscreenUiChange, showFullscreenUi]);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 520px), (hover: none) and (pointer: coarse)");
+    const updateMobileFullscreenControls = () => {
+      setMobileFullscreenControls(mediaQuery.matches);
+    };
+    updateMobileFullscreenControls();
+    mediaQuery.addEventListener?.("change", updateMobileFullscreenControls);
+    return () => {
+      mediaQuery.removeEventListener?.("change", updateMobileFullscreenControls);
+    };
+  }, []);
+
   function enableScrollZoom() {
     mapRef.current?.scrollWheelZoom.enable();
   }
@@ -859,10 +895,21 @@ function ResultsMap({
     refreshMapSize(mapRef.current);
   }
 
+  const renderedFullscreenAssistant =
+    mobileFullscreenControls && isValidElement(fullscreenAssistant)
+      ? cloneElement(fullscreenAssistant, {
+          key: "mobile-fullscreen-assistant",
+          collapsible: true,
+          defaultCollapsed: true,
+          compactCollapsed: true,
+        })
+      : fullscreenAssistant;
+
   return (
     <section
       className={`results-map-panel ${fullscreenFallback ? "fullscreen-fallback" : ""} ${
         showFullscreenUi ? "show-fullscreen-ui" : ""
+      } ${mobileFiltersOpen ? "mobile-filters-open" : ""
       }`.trim()}
       ref={mapPanelRef}
     >
@@ -872,8 +919,9 @@ function ResultsMap({
           onChange={onFilterChange}
           onSubmit={onSearchSubmit}
           onClear={onSearchClear}
+          onFiltersOpenChange={setMobileFiltersOpen}
         />
-        {fullscreenAssistant ? <div className="map-assistant-overlay">{fullscreenAssistant}</div> : null}
+        {renderedFullscreenAssistant ? <div className="map-assistant-overlay">{renderedFullscreenAssistant}</div> : null}
         <button
           className="map-fullscreen-button"
           type="button"

@@ -126,6 +126,7 @@ export function buildAssistantMessages({
   currentDate,
   currentFilters = {},
   rows = [],
+  resultCount,
   conversationHistory = [],
   purpose = "classify",
 }) {
@@ -196,7 +197,7 @@ Example json:
       prompt,
       currentFilters: normalizeFilters(currentFilters),
       conversationHistory: summarizeConversationHistory(conversationHistory),
-      currentResultCount: rows.length,
+      currentResultCount: Number.isSafeInteger(resultCount) && resultCount >= 0 ? resultCount : rows.length,
       currentResults: summarizeRowsForAssistant(rows),
     },
     null,

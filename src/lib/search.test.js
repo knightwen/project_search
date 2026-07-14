@@ -80,11 +80,12 @@ describe("search helpers", () => {
 
   it("filters by inclusive Start Date bounds", () => {
     const rows = [
-      { "Project ID": "1000", "Project Name": "Old bridge inspection", "Start Date": "2014-05-01" },
-      { "Project ID": "1100", "Project Name": "Boundary bridge inspection", "Start Date": "2016-06-19" },
-      { "Project ID": "1200", "Project Name": "Recent bridge inspection", "Start Date": "2021-03-15" },
-      { "Project ID": "1300", "Project Name": "Future bridge inspection", "Start Date": "2027-01-01" },
+      { "Project ID": "1000", "Project Name": "Old bridge inspection", "Start Date": "2014-05-01 00:00:00" },
+      { "Project ID": "1100", "Project Name": "Boundary bridge inspection", "Start Date": "2016-06-19 00:00:00" },
+      { "Project ID": "1200", "Project Name": "Recent bridge inspection", "Start Date": "2021-03-15 00:00:00" },
+      { "Project ID": "1300", "Project Name": "Future bridge inspection", "Start Date": "2027-01-01 00:00:00" },
       { "Project ID": "1400", "Project Name": "Undated bridge inspection", "Start Date": "" },
+      { "Project ID": "1500", "Project Name": "Invalid bridge inspection", "Start Date": "2021-02-30" },
     ];
 
     const result = filterProjects(rows, {

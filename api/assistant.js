@@ -74,6 +74,7 @@ export default async function handler(request, response) {
       currentDate: new Date().toISOString().slice(0, 10),
       currentFilters: request.body?.currentFilters || {},
       rows: request.body?.rows || [],
+      resultCount: request.body?.resultCount,
       conversationHistory: request.body?.conversationHistory || [],
       purpose: request.body?.purpose || "classify",
     });

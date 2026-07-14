@@ -136,6 +136,18 @@ describe("assistant core", () => {
     assert.match(messages[1].content, /2026-06-19/);
   });
 
+  it("keeps the complete result count when the client limits AI context rows", () => {
+    const messages = buildAssistantMessages({
+      prompt: "Summarize bridge projects",
+      currentDate: "2026-06-19",
+      rows: [{ "Project ID": "1200", "Project Name": "Bridge inspection" }],
+      resultCount: 1843,
+    });
+
+    assert.match(messages[1].content, /"currentResultCount": 1843/);
+    assert.match(messages[1].content, /Bridge inspection/);
+  });
+
   it("sets the assistant identity and WML first-person analysis voice", () => {
     const messages = buildAssistantMessages({
       prompt: "Summarize retaining wall projects",

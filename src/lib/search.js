@@ -50,10 +50,27 @@ function parseDateValue(value) {
     return null;
   }
 
-  const parsed = Date.parse(text);
-  if (Number.isNaN(parsed)) {
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+  if (!match) {
     return null;
   }
+
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const parsed = Date.UTC(year, month - 1, day);
+  const date = new Date(parsed);
+
+  if (
+    !Number.isFinite(parsed) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
   return parsed;
 }
 
