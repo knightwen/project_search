@@ -34,7 +34,9 @@ import {
 } from "./lib/kml.js";
 
 const PASSWORD_KEY = "project-search-password";
-const PAGE_SIZE = 20;
+const DEFAULT_PAGE_SIZE = 20;
+const MOBILE_PAGE_SIZE = 10;
+const MOBILE_LAYOUT_QUERY = "(max-width: 520px), (hover: none) and (pointer: coarse)";
 const MAX_ASSISTANT_CONTEXT_ROWS = 80;
 const DEFAULT_ASSISTANT_HISTORY_HEIGHT = 230;
 const DEFAULT_ASSISTANT_FULLSCREEN_HISTORY_HEIGHT = 420;
@@ -62,6 +64,10 @@ function textValue(value) {
     return "";
   }
   return String(value).trim();
+}
+
+function mobileLayoutActive() {
+  return typeof window !== "undefined" && window.matchMedia?.(MOBILE_LAYOUT_QUERY).matches;
 }
 
 function capitalizeFirstLetter(value) {
@@ -139,7 +145,7 @@ function refreshMapSize(map) {
   }, 160);
 }
 
-async function searchApi({ password, filters = {}, page = 1, includeAll = false }) {
+async function searchApi({ password, filters = {}, page = 1, pageSize = DEFAULT_PAGE_SIZE, includeAll = false }) {
   const response = await fetch("/api/search", {
     method: "POST",
     headers: {
@@ -149,7 +155,7 @@ async function searchApi({ password, filters = {}, page = 1, includeAll = false 
       password,
       filters,
       page,
-      pageSize: PAGE_SIZE,
+      pageSize,
       includeAll,
     }),
   });
@@ -190,7 +196,7 @@ async function assistantApi({
   return body;
 }
 
-function LoginView({ onLogin }) {
+function LoginView({ onLogin, pageSize }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [logoFailed, setLogoFailed] = useState(false);
@@ -199,7 +205,7 @@ function LoginView({ onLogin }) {
     event.preventDefault();
     setError("");
     try {
-      const initialPayload = await searchApi({ password, filters: {}, page: 1 });
+      const initialPayload = await searchApi({ password, filters: {}, page: 1, pageSize });
       sessionStorage.setItem(PASSWORD_KEY, password);
       onLogin(password, initialPayload);
     } catch (apiError) {
@@ -503,6 +509,10 @@ function AssistantPanel({
   }, [historyHeight]);
 
   useEffect(() => {
+    setCollapsed(defaultCollapsed);
+  }, [defaultCollapsed]);
+
+  useEffect(() => {
     const node = historyRef.current;
     if (!node || typeof ResizeObserver === "undefined") {
       return undefined;
@@ -595,7 +605,22 @@ function AssistantPanel({
       {collapsed && compactCollapsed ? null : collapsed ? (
         <div className="assistant-collapsed-bar">
           <h2>AI Assistant</h2>
-          <p>{history.length ? `${history.length} conversation entries` : "Ready to help with project searches"}</p>
+          <form className="assistant-collapsed-form" onSubmit={submit}>
+            <input
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              placeholder="Ask AI about projects..."
+              aria-label="Ask AI about projects"
+            />
+            <button
+              className={`assistant-collapsed-send ${loading ? "loading" : canSubmit ? "ready" : "idle"}`}
+              type="submit"
+              disabled={!canSubmit}
+              aria-label={loading ? "Working" : "Run assistant"}
+            >
+              {loading ? <RefreshCw size={16} aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
+            </button>
+          </form>
         </div>
       ) : (
         <div className="assistant-content">
@@ -1095,6 +1120,8 @@ export default function App() {
   const [fullscreenAssistantHistoryHeight, setFullscreenAssistantHistoryHeight] = useState(
     defaultFullscreenAssistantHistoryHeight,
   );
+  const [mobileLayout, setMobileLayout] = useState(mobileLayoutActive);
+  const [pageSize, setPageSize] = useState(() => (mobileLayoutActive() ? MOBILE_PAGE_SIZE : DEFAULT_PAGE_SIZE));
   const [page, setPage] = useState(1);
   const [mapRows, setMapRows] = useState([]);
   const [selectedMapProject, setSelectedMapProject] = useState(null);
@@ -1145,6 +1172,24 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia(MOBILE_LAYOUT_QUERY);
+    const updateMobileLayout = () => {
+      const nextMobileLayout = mediaQuery.matches;
+      setMobileLayout(nextMobileLayout);
+      setPageSize(nextMobileLayout ? MOBILE_PAGE_SIZE : DEFAULT_PAGE_SIZE);
+      setPage(1);
+    };
+
+    updateMobileLayout();
+    mediaQuery.addEventListener?.("change", updateMobileLayout);
+    return () => mediaQuery.removeEventListener?.("change", updateMobileLayout);
+  }, []);
+
+  useEffect(() => {
     if (!authenticated || !password) {
       return;
     }
@@ -1152,7 +1197,7 @@ export default function App() {
     let cancelled = false;
     setLoadError("");
     setMapRows([]);
-    searchApi({ password, filters, page })
+    searchApi({ password, filters, page, pageSize })
       .then((nextPayload) => {
         if (!cancelled) {
           setPayload(nextPayload);
@@ -1192,6 +1237,7 @@ export default function App() {
     filters.startDateFrom,
     filters.startDateTo,
     page,
+    pageSize,
     searching,
   ]);
 
@@ -1418,6 +1464,7 @@ export default function App() {
   if (!authenticated) {
     return (
       <LoginView
+        pageSize={pageSize}
         onLogin={(nextPassword, initialPayload) => {
           setPassword(nextPassword);
           setPayload(initialPayload);
@@ -1461,8 +1508,8 @@ export default function App() {
             <h2>{total.toLocaleString()} matching projects</h2>
             {total > 0 ? (
               <p>
-                {mappedResultCount.toLocaleString()} mapped projects | Showing {(currentPage - 1) * PAGE_SIZE + 1}-
-                {Math.min(currentPage * PAGE_SIZE, total)} of{" "}
+                {mappedResultCount.toLocaleString()} mapped projects | Showing {(currentPage - 1) * pageSize + 1}-
+                {Math.min(currentPage * pageSize, total)} of{" "}
                 {total.toLocaleString()}
               </p>
             ) : null}
@@ -1492,7 +1539,7 @@ export default function App() {
           fullscreenAssistant={<AssistantPanel {...fullscreenAssistantPanelProps} className="assistant-panel-fullscreen" />}
           onFullscreenUiChange={handleMapFullscreenUiChange}
         />
-        <AssistantPanel {...assistantPanelProps} collapsible />
+        <AssistantPanel {...assistantPanelProps} collapsible defaultCollapsed={mobileLayout} />
         {searching ? (
           <>
           {total > 0 ? (
@@ -1500,8 +1547,8 @@ export default function App() {
               <div className="mobile-result-text">
                 <span>{total.toLocaleString()} projects</span>
                 <span>
-                  {mappedResultCount.toLocaleString()} mapped | {(currentPage - 1) * PAGE_SIZE + 1}-
-                  {Math.min(currentPage * PAGE_SIZE, total)} of {total.toLocaleString()}
+                  {mappedResultCount.toLocaleString()} mapped | {(currentPage - 1) * pageSize + 1}-
+                  {Math.min(currentPage * pageSize, total)} of {total.toLocaleString()}
                 </span>
               </div>
               <ActionButton icon={Download} onClick={downloadCsv} className="mobile-csv-button">
@@ -1530,7 +1577,7 @@ export default function App() {
           ) : (
             <p className="empty-state">No projects were found for the current search.</p>
           )}
-          {total > PAGE_SIZE ? (
+          {total > pageSize ? (
             <PaginationControls
               currentPage={currentPage}
               totalPages={totalPages}
