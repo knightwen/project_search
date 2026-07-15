@@ -9,11 +9,13 @@ import {
   FolderOpen,
   LogOut,
   Maximize2,
+  Mic,
   Minimize2,
   RefreshCw,
   Search,
   Send,
   SlidersHorizontal,
+  Square,
   X,
 } from "lucide-react";
 import {
@@ -495,12 +497,16 @@ function AssistantPanel({
   collapsible = false,
   defaultCollapsed = false,
   compactCollapsed = false,
+  compactCollapsedLabel = false,
 }) {
   const [prompt, setPrompt] = useState("");
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const historyRef = useRef(null);
   const lastHistoryHeightRef = useRef(historyHeight);
   const resizingHistoryRef = useRef(false);
+  const speechRecognitionRef = useRef(null);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [listening, setListening] = useState(false);
   const canSubmit = Boolean(prompt.trim()) && !loading;
   const canClear = Boolean(prompt.trim() || history.length || error || pendingPrompt) && !loading;
 
@@ -511,6 +517,15 @@ function AssistantPanel({
   useEffect(() => {
     setCollapsed(defaultCollapsed);
   }, [defaultCollapsed]);
+
+  useEffect(() => {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setSpeechSupported(Boolean(Recognition));
+
+    return () => {
+      speechRecognitionRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const node = historyRef.current;
@@ -581,8 +596,49 @@ function AssistantPanel({
     onClear();
   }
 
-  const CollapseIcon = collapsed ? ChevronDown : ChevronUp;
-  const collapseLabel = collapsed ? (compactCollapsed ? "AI" : "Expand") : "Collapse";
+  function toggleVoiceInput() {
+    if (listening) {
+      speechRecognitionRef.current?.stop();
+      return;
+    }
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = navigator.language || "en-AU";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex)
+        .filter((result) => result.isFinal)
+        .map((result) => result[0]?.transcript || "")
+        .join(" ")
+        .trim();
+
+      if (transcript) {
+        setPrompt((currentPrompt) => `${currentPrompt}${currentPrompt ? " " : ""}${transcript}`);
+      }
+    };
+
+    speechRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      setListening(false);
+    }
+  }
+
+  const assistantTitle = compactCollapsedLabel ? "AI" : "AI Assistant";
+  const HistoryToggleIcon = collapsed ? ChevronDown : ChevronUp;
+  const showHistory = !collapsed;
 
   return (
     <section
@@ -591,116 +647,132 @@ function AssistantPanel({
       } ${className}`.trim()}
       aria-label="AI Assistant"
     >
-      {collapsible ? (
+      {collapsible && compactCollapsed && collapsed ? (
         <button
           className="assistant-collapse-button"
           type="button"
           onClick={() => setCollapsed((value) => !value)}
-          aria-expanded={!collapsed}
+          aria-label="Open AI assistant"
         >
-          {collapsed && compactCollapsed ? null : <CollapseIcon size={16} aria-hidden="true" />}
-          <span>{collapseLabel}</span>
+          <span>AI</span>
         </button>
       ) : null}
-      {collapsed && compactCollapsed ? null : collapsed ? (
-        <div className="assistant-collapsed-bar">
-          <h2>AI Assistant</h2>
-          <form className="assistant-collapsed-form" onSubmit={submit}>
-            <input
+      {compactCollapsed && collapsed ? null : (
+        <div className="assistant-content">
+        <form className="assistant-form" onSubmit={submit}>
+          <div className="assistant-input-shell">
+            <h2>{assistantTitle}</h2>
+            <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={handlePromptKeyDown}
               placeholder="Ask AI about projects..."
-              aria-label="Ask AI about projects"
+              rows={1}
             />
+            {speechSupported ? (
+              <button
+                className={`assistant-voice-button ${listening ? "listening" : ""}`}
+                type="button"
+                onClick={toggleVoiceInput}
+                aria-label={listening ? "Stop voice input" : "Start voice input"}
+                title={listening ? "Stop voice input" : "Start voice input"}
+              >
+                {listening ? <Square size={14} aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
+              </button>
+            ) : null}
             <button
-              className={`assistant-collapsed-send ${loading ? "loading" : canSubmit ? "ready" : "idle"}`}
+              className={`assistant-send-button ${loading ? "loading" : canSubmit ? "ready" : "idle"}`}
               type="submit"
               disabled={!canSubmit}
               aria-label={loading ? "Working" : "Run assistant"}
             >
               {loading ? <RefreshCw size={16} aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
             </button>
-          </form>
-        </div>
-      ) : (
-        <div className="assistant-content">
-      <form className="assistant-form" onSubmit={submit}>
-        <div className="assistant-input-shell">
-          <h2>AI Assistant</h2>
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={handlePromptKeyDown}
-            placeholder="Ask AI about projects..."
-            rows={2}
-          />
-          <button
-            className={`assistant-send-button ${loading ? "loading" : canSubmit ? "ready" : "idle"}`}
-            type="submit"
-            disabled={!canSubmit}
-            aria-label={loading ? "Working" : "Run assistant"}
-          >
-            {loading ? <RefreshCw size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
-          </button>
-          <button
-            className="assistant-clear-button"
-            type="button"
-            onClick={clearAssistant}
-            disabled={!canClear}
-            aria-label="Clear AI history"
-            title="Clear AI history"
-          >
-            <X size={12} aria-hidden="true" />
-            <span>Clear</span>
-          </button>
-        </div>
-      </form>
-      {error ? <p className="assistant-error">{error}</p> : null}
-      <div
-        className="assistant-history"
-        aria-label="AI conversation history"
-        ref={historyRef}
-        style={{ height: `${historyHeight}px` }}
-        onPointerDown={() => {
-          resizingHistoryRef.current = true;
-        }}
-      >
-        {!history.length && !loading ? (
-          <p className="assistant-empty-history">Conversation History</p>
+          </div>
+        </form>
+        {collapsible ? (
+          <div className="assistant-history-control">
+            <button
+              className="assistant-history-toggle"
+              type="button"
+              onClick={() => setCollapsed((value) => !value)}
+              aria-expanded={showHistory}
+            >
+              <span>Conversation history</span>
+            </button>
+            {canClear ? (
+              <button
+                className="assistant-clear-button"
+                type="button"
+                onClick={clearAssistant}
+                aria-label="Clear AI history"
+                title="Clear AI history"
+              >
+                <X size={12} aria-hidden="true" />
+                <span>Clear</span>
+              </button>
+            ) : null}
+            <button
+              className="assistant-history-toggle-icon"
+              type="button"
+              onClick={() => setCollapsed((value) => !value)}
+              aria-label={showHistory ? "Collapse conversation history" : "Expand conversation history"}
+              title={showHistory ? "Collapse conversation history" : "Expand conversation history"}
+            >
+              <HistoryToggleIcon size={14} aria-hidden="true" />
+            </button>
+          </div>
         ) : null}
-        {history.map((entry) => (
-          <article className="assistant-history-entry" key={entry.id}>
-            <div className="assistant-user-message">{entry.prompt}</div>
-            <div className="assistant-response">
-              <div className="assistant-response-meta">
-                <span>{entry.response.intent.replaceAll("_", " ")}</span>
-                {typeof entry.resultCount === "number" ? (
-                  <span>{entry.resultCount.toLocaleString()} matching projects</span>
-                ) : null}
-              </div>
-              {entry.response.filters ? (
-                <p className="assistant-filter-summary">{activeFilterSummary(entry.response.filters)}</p>
+        {showHistory ? (
+          <>
+            {error ? <p className="assistant-error">{error}</p> : null}
+            <div
+              className="assistant-history"
+              aria-label="AI conversation history"
+              ref={historyRef}
+              style={{ height: `${historyHeight}px` }}
+              onPointerDown={() => {
+                resizingHistoryRef.current = true;
+              }}
+            >
+              {!history.length && !loading ? (
+                <p className="assistant-empty-history">Conversation History</p>
               ) : null}
-              <div className="assistant-message">{entry.response.message}</div>
+              {history.map((entry) => (
+                <article className="assistant-history-entry" key={entry.id}>
+                  <div className="assistant-user-message">{entry.prompt}</div>
+                  <div className="assistant-response">
+                    <div className="assistant-response-meta">
+                      <span>{entry.response.intent.replaceAll("_", " ")}</span>
+                      {typeof entry.resultCount === "number" ? (
+                        <span>{entry.resultCount.toLocaleString()} matching projects</span>
+                      ) : null}
+                    </div>
+                    {entry.response.filters ? (
+                      <p className="assistant-filter-summary">{activeFilterSummary(entry.response.filters)}</p>
+                    ) : null}
+                    <div className="assistant-message">{entry.response.message}</div>
+                  </div>
+                </article>
+              ))}
+              {loading ? (
+                <article className="assistant-history-entry pending">
+                  <div className="assistant-user-message">{pendingPrompt}</div>
+                  <div className="assistant-response">
+                    <div className="assistant-response-meta">
+                      <span>working</span>
+                      {typeof resultCount === "number" ? <span>{resultCount.toLocaleString()} matching projects</span> : null}
+                    </div>
+                    <div className="assistant-message">Preparing a response...</div>
+                  </div>
+                </article>
+              ) : null}
             </div>
-          </article>
-        ))}
-        {loading ? (
-          <article className="assistant-history-entry pending">
-            <div className="assistant-user-message">{pendingPrompt}</div>
-            <div className="assistant-response">
-              <div className="assistant-response-meta">
-                <span>working</span>
-                {typeof resultCount === "number" ? <span>{resultCount.toLocaleString()} matching projects</span> : null}
-              </div>
-              <div className="assistant-message">Preparing a response...</div>
-            </div>
-          </article>
+            <p className="assistant-review-note">
+              Review AI-generated content before using it with clients.
+            </p>
+          </>
         ) : null}
-      </div>
-      <p className="assistant-review-note">
-        Review AI-generated content before using it with clients.
-      </p>
         </div>
       )}
     </section>
@@ -1536,10 +1608,15 @@ export default function App() {
           onSearchSubmit={submitSearch}
           onSearchClear={clearSearch}
           panelRef={mapSectionRef}
-          fullscreenAssistant={<AssistantPanel {...fullscreenAssistantPanelProps} className="assistant-panel-fullscreen" />}
+          fullscreenAssistant={<AssistantPanel {...fullscreenAssistantPanelProps} className="assistant-panel-fullscreen" collapsible />}
           onFullscreenUiChange={handleMapFullscreenUiChange}
         />
-        <AssistantPanel {...assistantPanelProps} collapsible defaultCollapsed={mobileLayout} />
+        <AssistantPanel
+          {...assistantPanelProps}
+          collapsible
+          defaultCollapsed={mobileLayout}
+          compactCollapsedLabel={mobileLayout}
+        />
         {searching ? (
           <>
           {total > 0 ? (
