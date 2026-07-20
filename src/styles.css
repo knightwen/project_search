@@ -2514,6 +2514,11 @@ td {
 }
 
 @media (max-width: 520px), (hover: none) and (pointer: coarse) {
+  .mobile-results-table {
+    -webkit-text-size-adjust: none;
+    text-size-adjust: none;
+  }
+
   .mobile-results-table td:nth-child(6),
   .mobile-results-table td:nth-child(7),
   .mobile-results-table td:nth-child(6) .mobile-cell-text,
