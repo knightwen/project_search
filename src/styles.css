@@ -2512,3 +2512,13 @@ td {
 .map-canvas .leaflet-control-zoom a:last-child {
   border-radius: 0 0 var(--ui-radius) var(--ui-radius);
 }
+
+@media (max-width: 520px), (hover: none) and (pointer: coarse) {
+  .mobile-results-table td:nth-child(6),
+  .mobile-results-table td:nth-child(7),
+  .mobile-results-table td:nth-child(6) .mobile-cell-text,
+  .mobile-results-table td:nth-child(7) .mobile-cell-text {
+    font-size: 0.66rem;
+    line-height: 1.15;
+  }
+}
