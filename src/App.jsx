@@ -390,7 +390,136 @@ function IconOnlyButton({ icon: Icon, label, className = "", ...props }) {
   );
 }
 
-function MapSearchOverlay({ filters, onChange, onSubmit, onClear, onFiltersOpenChange }) {
+function MapAssistantComposer({ onSubmit, onClear, hasContent, loading, historyExpanded, onHistoryToggle }) {
+  const [prompt, setPrompt] = useState("");
+  const speechRecognitionRef = useRef(null);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [listening, setListening] = useState(false);
+  const canSubmit = Boolean(prompt.trim()) && !loading;
+  const canClear = Boolean(prompt.trim() || hasContent) && !loading;
+
+  useEffect(() => {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setSpeechSupported(Boolean(Recognition));
+    return () => speechRecognitionRef.current?.abort();
+  }, []);
+
+  function submitAssistant() {
+    const nextPrompt = prompt.trim();
+    if (!nextPrompt || loading) {
+      return;
+    }
+    onSubmit?.(nextPrompt);
+    setPrompt("");
+  }
+
+  function toggleVoiceInput() {
+    if (listening) {
+      speechRecognitionRef.current?.stop();
+      return;
+    }
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = navigator.language || "en-AU";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex)
+        .filter((result) => result.isFinal)
+        .map((result) => result[0]?.transcript || "")
+        .join(" ")
+        .trim();
+      if (transcript) {
+        setPrompt((currentPrompt) => `${currentPrompt}${currentPrompt ? " " : ""}${transcript}`);
+      }
+    };
+
+    speechRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch {
+      setListening(false);
+    }
+  }
+
+  function clearAssistant() {
+    setPrompt("");
+    onClear?.();
+  }
+
+  return (
+    <div className="map-assistant-composer">
+      <div className="map-assistant-input-wrap">
+        <input
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              submitAssistant();
+            }
+          }}
+          placeholder="Ask AI about projects..."
+          aria-label="Ask AI about projects"
+        />
+        {speechSupported ? (
+          <IconOnlyButton
+            icon={listening ? Square : Mic}
+            label={listening ? "Stop voice input" : "Start voice input"}
+            className={`map-assistant-voice ${listening ? "listening" : ""}`}
+            onClick={toggleVoiceInput}
+          />
+        ) : null}
+      </div>
+      <IconOnlyButton
+        icon={loading ? RefreshCw : Send}
+        label={loading ? "Working" : "Run assistant"}
+        className={`map-assistant-send ${loading ? "loading" : ""}`}
+        onClick={submitAssistant}
+        disabled={!canSubmit}
+      />
+      <IconOnlyButton
+        icon={X}
+        label="Clear AI conversation"
+        className="map-assistant-clear"
+        onClick={clearAssistant}
+        disabled={!canClear}
+      />
+      <IconOnlyButton
+        icon={historyExpanded ? ChevronUp : ChevronDown}
+        label={historyExpanded ? "Collapse conversation history" : "Expand conversation history"}
+        className="map-assistant-history-toggle"
+        onClick={onHistoryToggle}
+      />
+    </div>
+  );
+}
+
+function MapSearchOverlay({
+  filters,
+  onChange,
+  onSubmit,
+  onClear,
+  onFiltersOpenChange,
+  overlayRef,
+  showAssistantComposer = false,
+  assistantLoading = false,
+  assistantHasContent = false,
+  assistantHistoryExpanded = false,
+  onAssistantSubmit,
+  onAssistantClear,
+  onAssistantHistoryToggle,
+}) {
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   function toggleFiltersOpen() {
@@ -402,7 +531,7 @@ function MapSearchOverlay({ filters, onChange, onSubmit, onClear, onFiltersOpenC
   }
 
   return (
-    <form className="map-search-overlay" onSubmit={onSubmit}>
+    <form className="map-search-overlay" onSubmit={onSubmit} ref={overlayRef}>
       <div className="map-search-primary">
         <SearchField
           id="map-keyword"
@@ -440,6 +569,16 @@ function MapSearchOverlay({ filters, onChange, onSubmit, onClear, onFiltersOpenC
             className={`icon-only-button mobile-filter-toggle ${filtersOpen ? "active" : ""}`}
             onClick={toggleFiltersOpen}
           />
+          {showAssistantComposer ? (
+            <MapAssistantComposer
+              onSubmit={onAssistantSubmit}
+              onClear={onAssistantClear}
+              hasContent={assistantHasContent}
+              loading={assistantLoading}
+              historyExpanded={assistantHistoryExpanded}
+              onHistoryToggle={onAssistantHistoryToggle}
+            />
+          ) : null}
         </div>
       </div>
       <div className={`mobile-filter-panel ${filtersOpen ? "open" : ""}`}>
@@ -498,6 +637,10 @@ function AssistantPanel({
   defaultCollapsed = false,
   compactCollapsed = false,
   compactCollapsedLabel = false,
+  openRequestKey = null,
+  hideCompactLauncher = false,
+  hideComposer = false,
+  historyVisible,
 }) {
   const [prompt, setPrompt] = useState("");
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -517,6 +660,18 @@ function AssistantPanel({
   useEffect(() => {
     setCollapsed(defaultCollapsed);
   }, [defaultCollapsed]);
+
+  useEffect(() => {
+    if (openRequestKey !== null) {
+      setCollapsed(false);
+    }
+  }, [openRequestKey]);
+
+  useEffect(() => {
+    if (typeof historyVisible === "boolean") {
+      setCollapsed(!historyVisible);
+    }
+  }, [historyVisible]);
 
   useEffect(() => {
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -644,10 +799,10 @@ function AssistantPanel({
     <section
       className={`assistant-panel ${collapsed ? "collapsed" : ""} ${
         compactCollapsed ? "compact-collapsed" : ""
-      } ${className}`.trim()}
+      } ${hideComposer ? "history-only" : ""} ${className}`.trim()}
       aria-label="AI Assistant"
     >
-      {collapsible && compactCollapsed && collapsed ? (
+      {collapsible && compactCollapsed && collapsed && !hideCompactLauncher ? (
         <button
           className="assistant-collapse-button"
           type="button"
@@ -659,27 +814,30 @@ function AssistantPanel({
       ) : null}
       {compactCollapsed && collapsed ? null : (
         <div className="assistant-content">
+        {!hideComposer ? (
         <form className="assistant-form" onSubmit={submit}>
           <div className="assistant-input-shell">
             <h2>{assistantTitle}</h2>
-            <textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              onKeyDown={handlePromptKeyDown}
-              placeholder="Ask AI about projects..."
-              rows={1}
-            />
-            {speechSupported ? (
-              <button
-                className={`assistant-voice-button ${listening ? "listening" : ""}`}
-                type="button"
-                onClick={toggleVoiceInput}
-                aria-label={listening ? "Stop voice input" : "Start voice input"}
-                title={listening ? "Stop voice input" : "Start voice input"}
-              >
-                {listening ? <Square size={14} aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
-              </button>
-            ) : null}
+            <div className="assistant-input-wrap">
+              <textarea
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={handlePromptKeyDown}
+                placeholder="Ask AI about projects..."
+                rows={1}
+              />
+              {speechSupported ? (
+                <button
+                  className={`assistant-voice-button ${listening ? "listening" : ""}`}
+                  type="button"
+                  onClick={toggleVoiceInput}
+                  aria-label={listening ? "Stop voice input" : "Start voice input"}
+                  title={listening ? "Stop voice input" : "Start voice input"}
+                >
+                  {listening ? <Square size={14} aria-hidden="true" /> : <Mic size={16} aria-hidden="true" />}
+                </button>
+              ) : null}
+            </div>
             <button
               className={`assistant-send-button ${loading ? "loading" : canSubmit ? "ready" : "idle"}`}
               type="submit"
@@ -690,7 +848,8 @@ function AssistantPanel({
             </button>
           </div>
         </form>
-        {collapsible ? (
+        ) : null}
+        {collapsible && !hideComposer ? (
           <div className="assistant-history-control">
             <button
               className="assistant-history-toggle"
@@ -798,6 +957,7 @@ function ResultsMap({
   const mapElementRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
+  const mapSearchOverlayRef = useRef(null);
   const fittedRowsSignatureRef = useRef("");
   const [mapSize, setMapSize] = useState("compact");
   const [collapsed, setCollapsed] = useState(false);
@@ -805,6 +965,8 @@ function ResultsMap({
   const [fullscreenFallback, setFullscreenFallback] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [mobileFullscreenControls, setMobileFullscreenControls] = useState(false);
+  const [mobileAssistantHistoryExpanded, setMobileAssistantHistoryExpanded] = useState(false);
+  const [mobileAssistantTop, setMobileAssistantTop] = useState(null);
   const mappedRows = useMemo(
     () =>
       rows
@@ -954,6 +1116,26 @@ function ResultsMap({
     };
   }, []);
 
+  useEffect(() => {
+    const node = mapSearchOverlayRef.current;
+    if (!node) {
+      return undefined;
+    }
+
+    const updateAssistantTop = () => {
+      setMobileAssistantTop(Math.ceil(node.getBoundingClientRect().height) + 20);
+    };
+
+    updateAssistantTop();
+    if (typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(updateAssistantTop);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   function enableScrollZoom() {
     mapRef.current?.scrollWheelZoom.enable();
   }
@@ -996,11 +1178,15 @@ function ResultsMap({
     mobileFullscreenControls && isValidElement(fullscreenAssistant)
       ? cloneElement(fullscreenAssistant, {
           key: "mobile-fullscreen-assistant",
-          collapsible: true,
+          collapsible: false,
           defaultCollapsed: true,
           compactCollapsed: true,
+          hideCompactLauncher: true,
+          hideComposer: true,
+          historyVisible: mobileAssistantHistoryExpanded,
         })
       : fullscreenAssistant;
+  const fullscreenAssistantProps = isValidElement(fullscreenAssistant) ? fullscreenAssistant.props : null;
 
   return (
     <section
@@ -1009,6 +1195,11 @@ function ResultsMap({
       } ${mobileFiltersOpen ? "mobile-filters-open" : ""
       }`.trim()}
       ref={mapPanelRef}
+      style={
+        mobileFullscreenControls && mobileAssistantTop
+          ? { "--map-assistant-top": `${mobileAssistantTop}px` }
+          : undefined
+      }
     >
       <div className="map-stage">
         <MapSearchOverlay
@@ -1017,6 +1208,26 @@ function ResultsMap({
           onSubmit={onSearchSubmit}
           onClear={onSearchClear}
           onFiltersOpenChange={setMobileFiltersOpen}
+          overlayRef={mapSearchOverlayRef}
+          showAssistantComposer={showFullscreenUi && mobileFullscreenControls}
+          assistantLoading={fullscreenAssistantProps?.loading}
+          assistantHasContent={Boolean(
+            fullscreenAssistantProps?.history?.length ||
+              fullscreenAssistantProps?.pendingPrompt ||
+              fullscreenAssistantProps?.error,
+          )}
+          assistantHistoryExpanded={mobileAssistantHistoryExpanded}
+          onAssistantSubmit={(prompt) => {
+            fullscreenAssistantProps?.onSubmit?.(prompt);
+            setMobileAssistantHistoryExpanded(true);
+          }}
+          onAssistantClear={() => {
+            fullscreenAssistantProps?.onClear?.();
+            setMobileAssistantHistoryExpanded(false);
+          }}
+          onAssistantHistoryToggle={() => {
+            setMobileAssistantHistoryExpanded((value) => !value);
+          }}
         />
         {renderedFullscreenAssistant ? <div className="map-assistant-overlay">{renderedFullscreenAssistant}</div> : null}
         <button
